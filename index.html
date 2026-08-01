@@ -110,7 +110,7 @@
 <canvas id="board"></canvas>
 
 <div id="bar">
-  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.3</span></div></div>
+  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.4</span></div></div>
   <div class="sep"></div>
   <div id="tools">
   <button class="btn tool" data-tool="select" title="Select / move">
@@ -868,34 +868,48 @@ function mergeBoards(baseEls, localEls, remoteEls){
 function boardDirty(){
   if(!sync.on) return;
   sync.dirty = true; setPill('warn');
-  clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, 1500);
+  clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, 2000);
 }
 
-function currentDoc(){ return { app:'pitboard', version:VERSION, rev:sync.rev,
-  updatedBy:(sync.cfg && sync.cfg.who) || 'sean', elements }; }
+function docFrom(payload){ return { app:'pitboard', version:VERSION, rev:sync.rev,
+  updatedBy:(sync.cfg && sync.cfg.who) || 'sean', elements:JSON.parse(payload) }; }
 
 async function syncPush(){
   if(!sync.on || sync.busy || !sync.dirty) return;
+  /* never push mid-stroke — wait until the pen is up */
+  if(drawingPid !== null || pointers.size || dragInfo){
+    clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, 1000); return; }
   sync.busy = true; setPill('warn');
   try {
     sync.rev++;
-    let r = await ghPut(sync.cfg, currentDoc(), sync.sha);
+    const payload = JSON.stringify(elements);   /* freeze what we're pushing */
+    let r = await ghPut(sync.cfg, docFrom(payload), sync.sha);
     if(r.conflict){
+      await new Promise(res => setTimeout(res, 700));  /* let GitHub settle */
       const remote = await ghGet(sync.cfg, false);
       if(!remote.missing){
         elements = mergeBoards(JSON.parse(sync.base), elements, remote.doc.elements || []);
         sync.rev = Math.max(sync.rev, (remote.doc.rev || 0) + 1);
         paint();
-        r = await ghPut(sync.cfg, currentDoc(), remote.sha);
+        const payload2 = JSON.stringify(elements);
+        r = await ghPut(sync.cfg, docFrom(payload2), remote.sha);
         if(r.conflict) throw new Error('sync conflict');
+        sync.sha = r.sha; sync.etag = null; sync.base = payload2;
+        sync.dirty = JSON.stringify(elements) !== payload2;
       } else throw new Error('remote vanished');
+    } else {
+      sync.sha = r.sha; sync.etag = null; sync.base = payload;
+      /* edits made while the push was in flight stay dirty and re-push */
+      sync.dirty = JSON.stringify(elements) !== payload;
     }
-    sync.sha = r.sha; sync.etag = null;
-    sync.base = JSON.stringify(elements);
-    sync.dirty = false; sync.errs = 0; setPill('ok');
+    sync.errs = 0;
+    if(sync.dirty){ setPill('warn'); clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, 800); }
+    else setPill('ok');
   } catch(e){
-    sync.errs++; setPill('err'); syncStat('Push failed: ' + e.message);
-    clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, Math.min(30000, 5000 * sync.errs));
+    sync.errs++;
+    setPill(sync.errs >= 2 ? 'err' : 'warn');   /* one transient failure isn't an emergency */
+    syncStat('Push retrying: ' + e.message);
+    clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, Math.min(20000, 3000 * sync.errs));
   } finally { sync.busy = false; }
 }
 
@@ -919,7 +933,7 @@ async function syncPoll(){
       }
     }
     sync.errs = 0; setPill(sync.dirty ? 'warn' : 'ok');
-  } catch(e){ sync.errs++; setPill('err'); }
+  } catch(e){ sync.errs++; if(sync.errs >= 2) setPill('err'); }
   finally { sync.busy = false; }
 }
 
