@@ -110,7 +110,7 @@
 <canvas id="board"></canvas>
 
 <div id="bar">
-  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.4</span></div></div>
+  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.5</span></div></div>
   <div class="sep"></div>
   <div id="tools">
   <button class="btn tool" data-tool="select" title="Select / move">
@@ -879,13 +879,17 @@ async function syncPush(){
   /* never push mid-stroke — wait until the pen is up */
   if(drawingPid !== null || pointers.size || dragInfo){
     clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, 1000); return; }
+  /* GitHub's contents API dislikes rapid same-file writes: min 5s between pushes */
+  const since = Date.now() - (sync.lastPush || 0);
+  if(since < 5000){
+    clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, 5200 - since); return; }
   sync.busy = true; setPill('warn');
   try {
     sync.rev++;
     const payload = JSON.stringify(elements);   /* freeze what we're pushing */
     let r = await ghPut(sync.cfg, docFrom(payload), sync.sha);
     if(r.conflict){
-      await new Promise(res => setTimeout(res, 700));  /* let GitHub settle */
+      await new Promise(res => setTimeout(res, 1300));  /* let GitHub settle */
       const remote = await ghGet(sync.cfg, false);
       if(!remote.missing){
         elements = mergeBoards(JSON.parse(sync.base), elements, remote.doc.elements || []);
@@ -902,14 +906,14 @@ async function syncPush(){
       /* edits made while the push was in flight stay dirty and re-push */
       sync.dirty = JSON.stringify(elements) !== payload;
     }
-    sync.errs = 0;
-    if(sync.dirty){ setPill('warn'); clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, 800); }
+    sync.errs = 0; sync.lastPush = Date.now();
+    if(sync.dirty){ setPill('warn'); clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, 5200); }
     else setPill('ok');
   } catch(e){
     sync.errs++;
-    setPill(sync.errs >= 2 ? 'err' : 'warn');   /* one transient failure isn't an emergency */
+    setPill(sync.errs >= 3 ? 'err' : 'warn');   /* transient failures self-heal; red = 3 in a row */
     syncStat('Push retrying: ' + e.message);
-    clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, Math.min(20000, 3000 * sync.errs));
+    clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, Math.min(20000, 4000 * sync.errs));
   } finally { sync.busy = false; }
 }
 
@@ -933,7 +937,7 @@ async function syncPoll(){
       }
     }
     sync.errs = 0; setPill(sync.dirty ? 'warn' : 'ok');
-  } catch(e){ sync.errs++; if(sync.errs >= 2) setPill('err'); }
+  } catch(e){ sync.errs++; if(sync.errs >= 3) setPill('err'); }
   finally { sync.busy = false; }
 }
 
