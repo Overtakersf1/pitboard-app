@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>PitBoard</title>
+<style>
+  :root{
+    --chrome:#0e1116; --chrome2:#161b23; --edge:#242b36;
+    --txt:#e8ecf2; --txt-dim:#8b95a5;
+    --accent:#4da3ff; --accent2:#ffb454;
+    --canvas-bg:#14171d; --canvas-dot:#252b35; --ink:#f2f4f8;
+  }
+  .light{ --canvas-bg:#fafbfc; --canvas-dot:#dde2e9; --ink:#1c2430; }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  button,#bar,#zoomer,#selChip,.modal{touch-action:manipulation;}
+  html,body{height:100%;overflow:hidden;position:fixed;width:100%;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro","Segoe UI",Roboto,sans-serif;
+    background:var(--canvas-bg);overscroll-behavior:none;}
+  #board{position:fixed;inset:0;touch-action:none;display:block;}
+
+  /* ---------- top bar ---------- */
+  #bar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:6px;
+    padding:calc(env(safe-area-inset-top) + 8px) 10px 8px 10px;
+    background:color-mix(in srgb,var(--chrome) 88%, transparent);
+    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--edge);}
+  #tools{display:flex;align-items:center;gap:6px;flex:1;min-width:0;
+    overflow-x:auto;scrollbar-width:none;}
+  #tools::-webkit-scrollbar{display:none;}
+  #logo{display:flex;align-items:center;gap:7px;padding:0 8px 0 2px;flex:none;user-select:none;-webkit-user-select:none;}
+  #logo .mark{width:26px;height:26px;border-radius:7px;flex:none;
+    background:linear-gradient(135deg,#4da3ff,#7cc4ff 55%,#ffb454);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#0b0e13;}
+  #logo .name{font-weight:700;font-size:14px;letter-spacing:.14em;color:var(--txt);}
+  #logo .name b{color:var(--accent2);font-weight:700;}
+  .sep{width:1px;height:26px;background:var(--edge);flex:none;margin:0 3px;}
+  .btn{flex:none;width:40px;height:40px;border:none;border-radius:10px;background:transparent;
+    color:var(--txt-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;}
+  .btn svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+  .btn.on{background:var(--accent);color:#08111d;}
+  .btn.lit{color:var(--txt);}
+  .btn:active{transform:scale(.92);}
+  .btn[disabled]{opacity:.3;pointer-events:none;}
+  .dot{flex:none;width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;position:relative;margin:0 1px;}
+  .dot.on{border-color:var(--txt);box-shadow:0 0 0 2px var(--canvas-bg);}
+  .dot.inkdot{background:conic-gradient(#f2f4f8 0 50%,#1c2430 50% 100%);}
+  .size{flex:none;width:32px;height:40px;border:none;background:transparent;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt-dim);}
+  .size.on{background:var(--chrome2);color:var(--txt);}
+  .size i{border-radius:50%;background:currentColor;display:block;}
+  #spacer{flex:1;min-width:4px;}
+
+  /* ---------- floating bits ---------- */
+  #zoomer{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px);z-index:20;
+    display:flex;align-items:center;background:color-mix(in srgb,var(--chrome) 90%, transparent);
+    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+    border:1px solid var(--edge);border-radius:12px;overflow:hidden;}
+  #zoomer button{border:none;background:transparent;color:var(--txt);width:40px;height:38px;font-size:19px;cursor:pointer;}
+  #zoomPct{color:var(--txt-dim);font-size:12px;min-width:46px;text-align:center;cursor:pointer;}
+  #selChip{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:20;display:none;gap:8px;}
+  #selChip button{border:none;border-radius:11px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;
+    background:var(--chrome2);color:var(--txt);border:1px solid var(--edge);}
+  #selChip button.danger{color:#ff7b7b;}
+  #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 70px);transform:translateX(-50%) translateY(-8px);
+    z-index:40;background:var(--chrome2);color:var(--txt);border:1px solid var(--edge);
+    padding:9px 16px;border-radius:11px;font-size:13.5px;opacity:0;pointer-events:none;transition:.22s;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* ---------- text editing ---------- */
+  #tedit{position:fixed;z-index:30;display:none;background:transparent;border:1.5px dashed var(--accent);
+    border-radius:6px;color:var(--ink);outline:none;padding:2px 6px;min-width:60px;
+    font-family:inherit;}
+
+  /* ---------- modals ---------- */
+  .modal{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+    background:rgba(5,8,12,.55);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);}
+  .modal.show{display:flex;}
+  .card{width:min(560px,92vw);max-height:84vh;overflow-y:auto;background:var(--chrome);
+    border:1px solid var(--edge);border-radius:18px;padding:20px;color:var(--txt);}
+  .card h2{font-size:17px;margin-bottom:4px;}
+  .card p.sub{color:var(--txt-dim);font-size:13px;margin-bottom:14px;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+  .act{flex:1;min-width:140px;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;
+    background:var(--chrome2);color:var(--txt);border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;gap:8px;}
+  .act.primary{background:var(--accent);color:#08111d;border-color:transparent;}
+  .act svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+  textarea#jsonBox{width:100%;height:120px;background:var(--chrome2);color:var(--txt);border:1px solid var(--edge);
+    border-radius:12px;padding:10px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;resize:none;margin-bottom:10px;}
+  .card .close{position:sticky;float:right;top:0;border:none;background:var(--chrome2);color:var(--txt-dim);
+    width:32px;height:32px;border-radius:9px;font-size:15px;cursor:pointer;}
+  .help h3{font-size:14px;color:var(--accent2);margin:14px 0 4px;}
+  .help p, .help li{font-size:13.5px;line-height:1.55;color:var(--txt);}
+  .help ul{padding-left:18px;}
+  .help .key{display:inline-block;background:var(--chrome2);border:1px solid var(--edge);border-radius:6px;padding:0 6px;font-size:12px;}
+  .field{width:100%;background:var(--chrome2);color:var(--txt);border:1px solid var(--edge);
+    border-radius:12px;padding:11px 12px;font-size:14px;margin-bottom:8px;outline:none;}
+  .field:focus{border-color:var(--accent);}
+  #syncDot{width:10px;height:10px;border-radius:50%;background:#5a6474;display:block;transition:.2s;}
+  #syncDot.ok{background:#51d88a;box-shadow:0 0 8px rgba(81,216,138,.7);}
+  #syncDot.warn{background:#ffb454;box-shadow:0 0 8px rgba(255,180,84,.7);}
+  #syncDot.err{background:#ff6b6b;box-shadow:0 0 8px rgba(255,107,107,.7);}
+</style>
+</head>
+<body>
+
+<canvas id="board"></canvas>
+
+<div id="bar">
+  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.3</span></div></div>
+  <div class="sep"></div>
+  <div id="tools">
+  <button class="btn tool" data-tool="select" title="Select / move">
+    <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6.5 1.5L15 19l-3 1.3-2.5-6.5L5 17z"/></svg></button>
+  <button class="btn tool" data-tool="pen" title="Pen">
+    <svg viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19z"/><path d="M13.5 7.5l3 3"/></svg></button>
+  <button class="btn tool" data-tool="eraser" title="Eraser">
+    <svg viewBox="0 0 24 24"><path d="M9 19l-4.5-4.5a2 2 0 010-2.8l7-7a2 2 0 012.8 0l5 5a2 2 0 010 2.8L13 19z"/><path d="M9 19h11"/></svg></button>
+  <div class="sep"></div>
+  <button class="btn tool" data-tool="rect" title="Box">
+    <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/></svg></button>
+  <button class="btn tool" data-tool="ellipse" title="Ellipse">
+    <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8.5" ry="6.5"/></svg></button>
+  <button class="btn tool" data-tool="diamond" title="Decision">
+    <svg viewBox="0 0 24 24"><path d="M12 4l8 8-8 8-8-8z"/></svg></button>
+  <button class="btn tool" data-tool="arrow" title="Arrow">
+    <svg viewBox="0 0 24 24"><path d="M5 19L19 5"/><path d="M11 5h8v8"/></svg></button>
+  <button class="btn tool" data-tool="line" title="Line">
+    <svg viewBox="0 0 24 24"><path d="M5 19L19 5"/></svg></button>
+  <button class="btn tool" data-tool="text" title="Text">
+    <svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></button>
+  <div class="sep"></div>
+  <div id="colors"></div>
+  <div class="sep"></div>
+  <button class="size" data-size="2.5"><i style="width:4px;height:4px"></i></button>
+  <button class="size" data-size="4.5"><i style="width:7px;height:7px"></i></button>
+  <button class="size" data-size="8"><i style="width:11px;height:11px"></i></button>
+  <div class="sep"></div>
+  <button class="btn lit" id="undoB" title="Undo">
+    <svg viewBox="0 0 24 24"><path d="M8 5L3 10l5 5"/><path d="M3 10h11a6 6 0 016 6v1"/></svg></button>
+  <button class="btn lit" id="redoB" title="Redo">
+    <svg viewBox="0 0 24 24"><path d="M16 5l5 5-5 5"/><path d="M21 10H10a6 6 0 00-6 6v1"/></svg></button>
+  <button class="btn lit" id="fingerB" title="Finger draws / pans">
+    <svg viewBox="0 0 24 24"><path d="M9 11V5a1.6 1.6 0 013.2 0v5.5"/><path d="M12.2 10.2V8.8a1.6 1.6 0 013.2 0v2.4"/><path d="M15.4 11.2v-.6a1.6 1.6 0 013.2 0V15a6 6 0 01-6 6h-1.4a6 6 0 01-4.9-2.6L4 15.6a1.7 1.7 0 012.7-2L9 16.4"/></svg></button>
+  <button class="btn lit" id="themeB" title="Light / dark canvas">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></svg></button>
+  <button class="btn lit" id="helpB" title="Help">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.2a2.7 2.7 0 015.3.7c0 1.8-2.6 2.2-2.6 3.8"/><path d="M12 17h.01"/></svg></button>
+  </div>
+  <button class="btn lit" id="syncB" title="Live sync settings" style="flex:none;"><span id="syncDot"></span></button>
+  <button class="btn on" id="shareB" title="Share with Claude" style="width:auto;padding:0 14px;font-weight:700;font-size:13.5px;gap:6px;flex:none;">
+    <svg viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/></svg>Share</button>
+</div>
+
+<div id="zoomer">
+  <button id="zoomOut">−</button><div id="zoomPct">100%</div><button id="zoomIn">+</button>
+</div>
+
+<div id="selChip">
+  <button id="editSelB">Edit label</button>
+  <button id="delSelB" class="danger">Delete</button>
+</div>
+
+<input id="tedit" autocomplete="off" autocapitalize="off">
+<div id="toast"></div>
+
+<!-- Share modal -->
+<div class="modal" id="shareM"><div class="card">
+  <button class="close" data-close>✕</button>
+  <h2>Hand off to Claude</h2>
+  <p class="sub">Copy the drawing, switch to the Claude chat (Split View works great), and paste it in. Claude sends JSON back — paste it below and load.</p>
+  <div class="row">
+    <button class="act primary" id="copyB"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>Copy for Claude</button>
+    <button class="act" id="pngB"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 17l5-5 4 4 3-3 6 6"/></svg>Export PNG</button>
+    <button class="act" id="jsonDlB"><svg viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>Save .json</button>
+  </div>
+  <textarea id="jsonBox" placeholder='Paste JSON from Claude here…'></textarea>
+  <div class="row">
+    <button class="act primary" id="loadB">Load from pasted JSON</button>
+    <button class="act" id="clearB">Clear board</button>
+  </div>
+</div></div>
+
+<!-- Sync modal -->
+<div class="modal" id="syncM"><div class="card">
+  <button class="close" data-close>✕</button>
+  <h2>Live sync</h2>
+  <p class="sub">The board syncs through a private GitHub repo — no more copy/paste. You need a repo and a fine-grained token with <b>Contents: read &amp; write</b> on just that repo. Enter them once; after that the green dot means we're live.</p>
+  <input class="field" id="syncRepo" placeholder="owner/repo   e.g. sgleason/pitboard-sync" autocapitalize="off" autocomplete="off">
+  <input class="field" id="syncToken" placeholder="github_pat_…  fine-grained token" type="password" autocomplete="off">
+  <input class="field" id="syncBranch" placeholder="branch (default: main)" autocapitalize="off" autocomplete="off">
+  <div class="row">
+    <button class="act primary" id="syncGo">Connect &amp; sync</button>
+    <button class="act" id="syncOff">Disconnect</button>
+  </div>
+  <p class="sub" id="syncStat" style="margin:6px 0 0"></p>
+</div></div>
+
+<!-- Help modal -->
+<div class="modal" id="helpM"><div class="card help">
+  <button class="close" data-close>✕</button>
+  <h2>PitBoard</h2>
+  <p class="sub">A shared canvas for Sean &amp; Claude — like a pit board, but both ways.</p>
+  <h3>Drawing</h3>
+  <ul>
+    <li>Apple Pencil always draws. Fingers draw too, unless you flip the <b>hand button</b> to pan mode.</li>
+    <li><b>Two fingers</b> always pan &amp; pinch-zoom, whatever mode you're in.</li>
+    <li>Boxes, ellipses and decision diamonds: drag them out with the shape tools. <b>Double-tap a shape</b> (with Select) to give it a label.</li>
+    <li>Text tool: tap anywhere and type. Eraser deletes whole objects it touches.</li>
+  </ul>
+  <h3>The loop with Claude</h3>
+  <ul>
+    <li><b>Live sync (best):</b> with the sync dot green, just draw — the board pushes itself, and Claude's edits appear on their own a few seconds after Claude makes them. Set it up via the dot button.</li>
+    <li>Put this board and the Claude app <b>side by side in Split View</b>, draw, and tell Claude what you want changed.</li>
+    <li><b>Fallback:</b> <span class="key">Share</span> → Copy for Claude → paste in chat; paste Claude's JSON back via <span class="key">Share</span> → Load.</li>
+  </ul>
+  <h3>Tips</h3>
+  <ul>
+    <li>In Safari, use <b>Add to Home Screen</b> for a full-screen app feel.</li>
+    <li>Everything on the board is structured data — Claude can move <i>your</i> boxes, not just draw on top of them.</li>
+  </ul>
+</div></div>
+
+<script>
+'use strict';
+/* ================= PitBoard v1 — Sean & Claude ================= */
+const VERSION = 1;
+
+/* A drawing Claude ships embedded in the file loads automatically: */
+const INITIAL_DRAWING = {
+  app:"pitboard", version:1, elements:[
+    {id:"t1", type:"text", x:140, y:96, text:"PITBOARD — our shared canvas", color:"#ffb454", fontSize:30},
+    {id:"s1", type:"stroke", color:"#4da3ff", size:3.5, points:[[140,140,0.5],[180,133,0.6],[225,141,0.7],[270,133,0.6],[315,141,0.5],[360,134,0.6],[400,140,0.5]]},
+    {id:"b1", type:"rect", x:120, y:200, w:190, h:70, color:"#4da3ff", size:3, label:"You sketch"},
+    {id:"b2", type:"rect", x:410, y:200, w:190, h:70, color:"#4da3ff", size:3, label:"Copy for Claude"},
+    {id:"b3", type:"rect", x:700, y:200, w:190, h:70, color:"#ffb454", size:3, label:"Claude edits"},
+    {id:"b4", type:"rect", x:410, y:390, w:190, h:70, color:"#51d88a", size:3, label:"Load the update"},
+    {id:"a1", type:"arrow", x1:314, y1:235, x2:406, y2:235, color:"ink", size:3},
+    {id:"a2", type:"arrow", x1:604, y1:235, x2:696, y2:235, color:"ink", size:3},
+    {id:"a3", type:"arrow", x1:795, y1:274, x2:608, y2:412, color:"ink", size:3},
+    {id:"a4", type:"arrow", x1:406, y1:412, x2:218, y2:274, color:"ink", size:3},
+    {id:"t2", type:"text", x:140, y:500, text:"Draw something, then tap Share → Copy for Claude.", color:"ink", fontSize:17},
+    {id:"t3", type:"text", x:140, y:528, text:"Double-tap any box with the Select tool to rename it — even the ones I made.", color:"ink", fontSize:17}
+  ]
+};
+
+/* ---------------- state ---------------- */
+const canvas = document.getElementById('board');
+let ctx = canvas.getContext('2d');   // reassigned temporarily during PNG export
+if(!ctx.roundRect){ ctx.roundRect = function(x,y,w,h){ this.rect(x,y,w,h); }; }
+let elements = [];
+let view = {x:0, y:0, s:1};
+let tool = 'pen';
+let color = 'ink';                 // 'ink' auto-contrasts with the theme
+let size = 4.5;
+let fingerDraws = true;
+let dark = true;
+let selectedId = null;
+let undoStack = [], redoStack = [];
+let dirty = true;
+
+const PALETTE = ['ink','#4da3ff','#ffb454','#ff6b6b','#51d88a','#b78cff'];
+
+/* ---------------- helpers ---------------- */
+const $ = s => document.querySelector(s);
+const uid = () => 'e' + Math.random().toString(36).slice(2,9);
+const inkColor = () => dark ? '#f2f4f8' : '#1c2430';
+const resolve = c => c === 'ink' ? inkColor() : c;
+const toWorld = (sx, sy) => ({x:(sx - view.x)/view.s, y:(sy - view.y)/view.s});
+const clone = o => JSON.parse(JSON.stringify(o));
+
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), 1600); }
+
+function snapshot(){ undoStack.push(JSON.stringify(elements)); if(undoStack.length > 60) undoStack.shift(); redoStack = []; refreshUndo(); boardDirty(); }
+function undo(){ if(!undoStack.length) return; redoStack.push(JSON.stringify(elements)); elements = JSON.parse(undoStack.pop()); selectedId = null; syncSel(); paint(); refreshUndo(); boardDirty(); }
+function redo(){ if(!redoStack.length) return; undoStack.push(JSON.stringify(elements)); elements = JSON.parse(redoStack.pop()); selectedId = null; syncSel(); paint(); refreshUndo(); boardDirty(); }
+function refreshUndo(){ $('#undoB').disabled = !undoStack.length; $('#redoB').disabled = !redoStack.length; }
+
+/* ---------------- canvas sizing ---------------- */
+function resize(){
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
+  canvas.style.width = innerWidth + 'px'; canvas.style.height = innerHeight + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  paint();
+}
+addEventListener('resize', resize);
+
+/* ---------------- rendering ---------------- */
+function paint(){ dirty = true; }
+function frame(){
+  if(dirty){ dirty = false; draw(); }
+  requestAnimationFrame(frame);
+}
+function draw(){
+  const bg = getComputedStyle(document.body).getPropertyValue('--canvas-bg').trim();
+  const dot = getComputedStyle(document.body).getPropertyValue('--canvas-dot').trim();
+  ctx.save();
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, innerWidth, innerHeight);
+  // dot grid
+  const step = 28 * view.s;
+  if(step > 9){
+    ctx.fillStyle = dot;
+    const ox = ((view.x % step) + step) % step, oy = ((view.y % step) + step) % step;
+    for(let x = ox; x < innerWidth; x += step)
+      for(let y = oy; y < innerHeight; y += step){ ctx.beginPath(); ctx.arc(x, y, 1.1, 0, 7); ctx.fill(); }
+  }
+  ctx.translate(view.x, view.y); ctx.scale(view.s, view.s);
+  for(const el of elements) drawEl(el);
+  if(tempEl) drawEl(tempEl);
+  // selection box
+  const sel = elements.find(e => e.id === selectedId);
+  if(sel){
+    const b = bbox(sel);
+    ctx.strokeStyle = '#4da3ff'; ctx.lineWidth = 1.5/view.s; ctx.setLineDash([6/view.s, 5/view.s]);
+    ctx.strokeRect(b.x - 8, b.y - 8, b.w + 16, b.h + 16); ctx.setLineDash([]);
+  }
+  ctx.restore();
+  // eraser cursor
+  if(eraserPt){ ctx.save(); ctx.strokeStyle = 'rgba(255,120,120,.9)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(eraserPt.x, eraserPt.y, 14, 0, 7); ctx.stroke(); ctx.restore(); }
+}
+
+function drawEl(el){
+  ctx.strokeStyle = resolve(el.color); ctx.fillStyle = resolve(el.color);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  switch(el.type){
+    case 'stroke': {
+      const pts = el.points; if(pts.length < 2){ if(pts.length === 1){ ctx.beginPath(); ctx.arc(pts[0][0], pts[0][1], el.size/2, 0, 7); ctx.fill(); } break; }
+      for(let i = 1; i < pts.length; i++){
+        const p0 = pts[i-1], p1 = pts[i];
+        ctx.lineWidth = el.size * (0.55 + 0.9 * ((p0[2] + p1[2]) / 2));
+        ctx.beginPath();
+        if(i === 1) ctx.moveTo(p0[0], p0[1]);
+        else ctx.moveTo((pts[i-2][0]+p0[0])/2, (pts[i-2][1]+p0[1])/2);
+        ctx.quadraticCurveTo(p0[0], p0[1], (p0[0]+p1[0])/2, (p0[1]+p1[1])/2);
+        if(i === pts.length-1) ctx.lineTo(p1[0], p1[1]);
+        ctx.stroke();
+      }
+      break; }
+    case 'rect': case 'ellipse': case 'diamond': {
+      const {x, y, w, h} = normRect(el);
+      ctx.lineWidth = el.size;
+      ctx.save(); ctx.globalAlpha = 0.10;
+      shapePath(el.type, x, y, w, h); ctx.fill(); ctx.restore();
+      shapePath(el.type, x, y, w, h); ctx.stroke();
+      if(el.label){
+        ctx.save();
+        ctx.fillStyle = inkColor();
+        ctx.font = '600 16px -apple-system, "SF Pro", "Segoe UI", sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(el.label, x + w/2, y + h/2);
+        ctx.restore();
+      }
+      break; }
+    case 'line': case 'arrow': {
+      ctx.lineWidth = el.size;
+      ctx.beginPath(); ctx.moveTo(el.x1, el.y1); ctx.lineTo(el.x2, el.y2); ctx.stroke();
+      if(el.type === 'arrow'){
+        const a = Math.atan2(el.y2 - el.y1, el.x2 - el.x1), L = 6 + el.size * 2.4;
+        ctx.beginPath();
+        ctx.moveTo(el.x2, el.y2);
+        ctx.lineTo(el.x2 - L*Math.cos(a - 0.46), el.y2 - L*Math.sin(a - 0.46));
+        ctx.moveTo(el.x2, el.y2);
+        ctx.lineTo(el.x2 - L*Math.cos(a + 0.46), el.y2 - L*Math.sin(a + 0.46));
+        ctx.stroke();
+      }
+      break; }
+    case 'text': {
+      ctx.font = `500 ${el.fontSize || 17}px -apple-system, "SF Pro", "Segoe UI", sans-serif`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText(el.text, el.x, el.y);
+      break; }
+  }
+}
+function shapePath(type, x, y, w, h){
+  ctx.beginPath();
+  if(type === 'rect'){ const r = Math.min(10, Math.abs(w)/4, Math.abs(h)/4);
+    ctx.roundRect(x, y, w, h, r); }
+  else if(type === 'ellipse'){ ctx.ellipse(x + w/2, y + h/2, Math.abs(w/2), Math.abs(h/2), 0, 0, 7); }
+  else { ctx.moveTo(x + w/2, y); ctx.lineTo(x + w, y + h/2); ctx.lineTo(x + w/2, y + h); ctx.lineTo(x, y + h/2); ctx.closePath(); }
+}
+function normRect(el){
+  let {x, y, w, h} = el;
+  if(w < 0){ x += w; w = -w; } if(h < 0){ y += h; h = -h; }
+  return {x, y, w, h};
+}
+function bbox(el){
+  if(el.type === 'stroke'){
+    let x0=1e9, y0=1e9, x1=-1e9, y1=-1e9;
+    for(const p of el.points){ x0=Math.min(x0,p[0]); y0=Math.min(y0,p[1]); x1=Math.max(x1,p[0]); y1=Math.max(y1,p[1]); }
+    return {x:x0, y:y0, w:x1-x0, h:y1-y0};
+  }
+  if(el.type === 'line' || el.type === 'arrow')
+    return {x:Math.min(el.x1,el.x2), y:Math.min(el.y1,el.y2), w:Math.abs(el.x2-el.x1), h:Math.abs(el.y2-el.y1)};
+  if(el.type === 'text'){
+    ctx.font = `500 ${el.fontSize || 17}px -apple-system, sans-serif`;
+    return {x:el.x, y:el.y, w:ctx.measureText(el.text).width, h:(el.fontSize || 17) * 1.25};
+  }
+  return normRect(el);
+}
+
+/* ---------------- hit testing ---------------- */
+function distSeg(px, py, x1, y1, x2, y2){
+  const dx = x2-x1, dy = y2-y1, L2 = dx*dx + dy*dy;
+  let t = L2 ? ((px-x1)*dx + (py-y1)*dy) / L2 : 0; t = Math.max(0, Math.min(1, t));
+  const gx = x1 + t*dx - px, gy = y1 + t*dy - py;
+  return Math.hypot(gx, gy);
+}
+function hitTest(wx, wy, tol){
+  for(let i = elements.length - 1; i >= 0; i--){
+    const el = elements[i];
+    if(el.type === 'stroke'){
+      const pts = el.points;
+      for(let j = 1; j < pts.length; j++)
+        if(distSeg(wx, wy, pts[j-1][0], pts[j-1][1], pts[j][0], pts[j][1]) < tol + el.size) return el;
+      if(pts.length === 1 && Math.hypot(pts[0][0]-wx, pts[0][1]-wy) < tol + el.size) return el;
+    } else if(el.type === 'line' || el.type === 'arrow'){
+      if(distSeg(wx, wy, el.x1, el.y1, el.x2, el.y2) < tol + el.size) return el;
+    } else {
+      const b = bbox(el);
+      if(wx > b.x - tol && wx < b.x + b.w + tol && wy > b.y - tol && wy < b.y + b.h + tol) return el;
+    }
+  }
+  return null;
+}
+function moveEl(el, dx, dy){
+  if(el.type === 'stroke') for(const p of el.points){ p[0] += dx; p[1] += dy; }
+  else if(el.type === 'line' || el.type === 'arrow'){ el.x1 += dx; el.y1 += dy; el.x2 += dx; el.y2 += dy; }
+  else { el.x += dx; el.y += dy; }
+}
+
+/* ---------------- pointer input ---------------- */
+const pointers = new Map();   // id -> {sx, sy, type}
+let tempEl = null;            // element being drawn
+let drawingPid = null;
+let dragInfo = null;          // {el, lx, ly, moved}
+let gesture = null;           // {d, cx, cy} pinch state
+let eraserPt = null;
+let lastTap = {t:0, x:0, y:0, id:null};
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  commitTextEdit();
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {sx:e.clientX, sy:e.clientY, type:e.pointerType});
+
+  const touches = [...pointers.values()].filter(p => p.type !== 'pen');
+  const isPen = e.pointerType === 'pen';
+
+  // second touch → become a gesture, cancel any touch drawing
+  if(!isPen && touches.length === 2){
+    if(tempEl && drawingPid !== null){ tempEl = null; drawingPid = null; }
+    dragInfo = null; startGesture(); paint(); return;
+  }
+  if(pointers.size > 1 && !isPen) return;
+
+  // finger in pan mode → single-finger pan
+  if(!isPen && !fingerDraws){ gesture = {pan:true, lx:e.clientX, ly:e.clientY}; return; }
+
+  const w = toWorld(e.clientX, e.clientY);
+  beginAction(e, w);
+});
+
+function startGesture(){
+  const ts = [...pointers.entries()].filter(([,p]) => p.type !== 'pen').map(([,p]) => p);
+  if(ts.length < 2) return;
+  gesture = { d: Math.hypot(ts[0].sx-ts[1].sx, ts[0].sy-ts[1].sy),
+              cx:(ts[0].sx+ts[1].sx)/2, cy:(ts[0].sy+ts[1].sy)/2 };
+}
+
+function beginAction(e, w){
+  drawingPid = e.pointerId;
+  const press = e.pressure > 0 ? e.pressure : 0.5;
+  switch(tool){
+    case 'pen':
+      tempEl = {id:uid(), type:'stroke', color, size, points:[[w.x, w.y, press]]}; break;
+    case 'rect': case 'ellipse': case 'diamond':
+      tempEl = {id:uid(), type:tool, x:w.x, y:w.y, w:1, h:1, color, size:Math.max(size,3)}; break;
+    case 'line': case 'arrow':
+      tempEl = {id:uid(), type:tool, x1:w.x, y1:w.y, x2:w.x, y2:w.y, color, size:Math.max(size,3)}; break;
+    case 'eraser':
+      eraserPt = {x:e.clientX, y:e.clientY}; eraseAt(w); break;
+    case 'text':
+      startTextAt(w); drawingPid = null; break;
+    case 'select': {
+      const hit = hitTest(w.x, w.y, 10/view.s);
+      const now = performance.now();
+      if(hit && lastTap.id === hit.id && now - lastTap.t < 380 && Math.hypot(w.x-lastTap.x, w.y-lastTap.y) < 24){
+        lastTap = {t:0}; editLabel(hit); drawingPid = null; return;
+      }
+      lastTap = {t:now, x:w.x, y:w.y, id:hit ? hit.id : null};
+      selectedId = hit ? hit.id : null; syncSel();
+      dragInfo = hit ? {el:hit, lx:w.x, ly:w.y, moved:false} : null;
+      paint(); break; }
+  }
+  paint();
+}
+
+canvas.addEventListener('pointermove', e => {
+  e.preventDefault();
+  const rec = pointers.get(e.pointerId);
+  if(rec){ rec.sx = e.clientX; rec.sy = e.clientY; }
+
+  if(gesture){
+    if(gesture.pan){ view.x += e.clientX - gesture.lx; view.y += e.clientY - gesture.ly;
+      gesture.lx = e.clientX; gesture.ly = e.clientY; paint(); return; }
+    const ts = [...pointers.values()].filter(p => p.type !== 'pen');
+    if(ts.length >= 2){
+      const d = Math.hypot(ts[0].sx-ts[1].sx, ts[0].sy-ts[1].sy);
+      const cx = (ts[0].sx+ts[1].sx)/2, cy = (ts[0].sy+ts[1].sy)/2;
+      const k = Math.max(0.25, Math.min(4, view.s * (d / gesture.d))) / view.s;
+      view.x = cx - k * (cx - view.x) + (cx - gesture.cx);
+      view.y = cy - k * (cy - view.y) + (cy - gesture.cy);
+      view.s *= k;
+      gesture.d = d; gesture.cx = cx; gesture.cy = cy;
+      syncZoom(); paint();
+    }
+    return;
+  }
+
+  if(e.pointerId !== drawingPid && !dragInfo) return;
+  const w = toWorld(e.clientX, e.clientY);
+
+  if(dragInfo){
+    const dx = w.x - dragInfo.lx, dy = w.y - dragInfo.ly;
+    if(!dragInfo.moved && Math.hypot(dx, dy) > 2/view.s){ snapshot(); dragInfo.moved = true; }
+    if(dragInfo.moved){ moveEl(dragInfo.el, dx, dy); dragInfo.lx = w.x; dragInfo.ly = w.y; paint(); }
+    return;
+  }
+  if(!tempEl){
+    if(tool === 'eraser' && e.pointerId === drawingPid){ eraserPt = {x:e.clientX, y:e.clientY}; eraseAt(w); paint(); }
+    return;
+  }
+  const press = e.pressure > 0 ? e.pressure : 0.5;
+  if(tempEl.type === 'stroke'){
+    const pts = tempEl.points, last = pts[pts.length-1];
+    if(Math.hypot(w.x-last[0], w.y-last[1]) * view.s > 1.4) pts.push([w.x, w.y, press]);
+  } else if(tempEl.x1 !== undefined){ tempEl.x2 = w.x; tempEl.y2 = w.y; }
+  else { tempEl.w = w.x - tempEl.x; tempEl.h = w.y - tempEl.y; }
+  paint();
+});
+
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(gesture){ if([...pointers.values()].filter(p => p.type !== 'pen').length < 2 && !gesture.pan) gesture = null;
+    if(gesture && gesture.pan) gesture = null;
+    if(pointers.size === 0) gesture = null; }
+  if(e.pointerId === drawingPid){
+    drawingPid = null;
+    if(tempEl){
+      let keep = true;
+      if(tempEl.type === 'stroke' && tempEl.points.length < 2) keep = tempEl.points.length === 1;
+      if(tempEl.w !== undefined && Math.abs(tempEl.w) < 6 && Math.abs(tempEl.h) < 6) keep = false;
+      if(tempEl.x1 !== undefined && Math.hypot(tempEl.x2-tempEl.x1, tempEl.y2-tempEl.y1) < 6) keep = false;
+      if(keep){ snapshot(); const t = tempEl; if(t.w !== undefined) Object.assign(t, normRect(t)); elements.push(t); }
+      tempEl = null;
+    }
+    eraserPt = null;
+  }
+  if(dragInfo) dragInfo = null;
+  paint();
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+let erasedAny = false;
+function eraseAt(w){
+  const el = hitTest(w.x, w.y, 12/view.s);
+  if(el){ if(!erasedAny){ snapshot(); erasedAny = true; }
+    elements = elements.filter(x => x !== el);
+    if(selectedId === el.id){ selectedId = null; syncSel(); } }
+}
+canvas.addEventListener('pointerup', () => { erasedAny = false; });
+
+/* wheel: trackpad/desktop */
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  if(e.ctrlKey || e.metaKey){
+    const k = Math.max(0.25, Math.min(4, view.s * (1 - e.deltaY * 0.01))) / view.s;
+    view.x = e.clientX - k * (e.clientX - view.x);
+    view.y = e.clientY - k * (e.clientY - view.y);
+    view.s *= k;
+  } else { view.x -= e.deltaX; view.y -= e.deltaY; }
+  syncZoom(); paint();
+}, {passive:false});
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+/* ---------------- text & labels ---------------- */
+const tedit = $('#tedit');
+let editing = null; // {mode:'new'|'label'|'text', el?, w?}
+function startTextAt(w){
+  editing = {mode:'new', w};
+  const fs = Math.max(17, size * 4);
+  placeEditor(w.x, w.y, fs, '');
+}
+function editLabel(el){
+  if(el.type === 'text'){
+    editing = {mode:'text', el};
+    placeEditor(el.x, el.y, el.fontSize || 17, el.text);
+  } else if(el.type === 'rect' || el.type === 'ellipse' || el.type === 'diamond'){
+    editing = {mode:'label', el};
+    const b = normRect(el);
+    placeEditor(b.x + b.w/2 - 60/view.s, b.y + b.h/2 - 11/view.s, 16, el.label || '');
+  }
+  selectedId = el.id; syncSel();
+}
+function placeEditor(wx, wy, fs, val){
+  tedit.style.display = 'block';
+  tedit.style.left = (view.x + wx * view.s - 4) + 'px';
+  tedit.style.top  = (view.y + wy * view.s - 4) + 'px';
+  tedit.style.fontSize = (fs * view.s) + 'px';
+  tedit.value = val;
+  setTimeout(() => tedit.focus(), 30);
+}
+function commitTextEdit(){
+  if(!editing) return;
+  const v = tedit.value.trim();
+  const ed = editing; editing = null;
+  tedit.style.display = 'none'; tedit.blur();
+  if(ed.mode === 'new'){
+    if(v){ snapshot(); elements.push({id:uid(), type:'text', x:ed.w.x, y:ed.w.y, text:v, color, fontSize:Math.max(17, size*4)}); }
+  } else if(ed.mode === 'text'){
+    snapshot(); if(v) ed.el.text = v; else elements = elements.filter(x => x !== ed.el);
+  } else if(ed.mode === 'label'){
+    snapshot(); ed.el.label = v;
+  }
+  paint();
+}
+tedit.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); commitTextEdit(); } });
+tedit.addEventListener('blur', () => setTimeout(commitTextEdit, 50));
+
+/* ---------------- selection chip ---------------- */
+function syncSel(){
+  const el = elements.find(x => x.id === selectedId);
+  $('#selChip').style.display = el ? 'flex' : 'none';
+  if(el) $('#editSelB').style.display = (el.type === 'stroke' || el.type === 'line' || el.type === 'arrow') ? 'none' : '';
+}
+$('#delSelB').addEventListener('click', () => {
+  const el = elements.find(x => x.id === selectedId);
+  if(el){ snapshot(); elements = elements.filter(x => x !== el); selectedId = null; syncSel(); paint(); }
+});
+$('#editSelB').addEventListener('click', () => {
+  const el = elements.find(x => x.id === selectedId);
+  if(el) editLabel(el);
+});
+
+/* ---------------- toolbar wiring ---------------- */
+document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => {
+  tool = b.dataset.tool;
+  document.querySelectorAll('.tool').forEach(x => x.classList.toggle('on', x === b));
+  if(tool !== 'select'){ selectedId = null; syncSel(); paint(); }
+}));
+document.querySelector('[data-tool="pen"]').classList.add('on');
+
+const colorsBox = $('#colors');
+colorsBox.style.cssText = 'display:flex;align-items:center;';
+PALETTE.forEach(c => {
+  const d = document.createElement('button');
+  d.className = 'dot' + (c === 'ink' ? ' inkdot' : '') + (c === color ? ' on' : '');
+  if(c !== 'ink') d.style.background = c;
+  d.title = c === 'ink' ? 'Auto ink' : c;
+  d.addEventListener('click', () => { color = c;
+    colorsBox.querySelectorAll('.dot').forEach(x => x.classList.remove('on')); d.classList.add('on');
+    const sel = elements.find(x => x.id === selectedId);
+    if(sel){ snapshot(); sel.color = c; paint(); }
+  });
+  colorsBox.appendChild(d);
+});
+
+document.querySelectorAll('.size').forEach(b => b.addEventListener('click', () => {
+  size = parseFloat(b.dataset.size);
+  document.querySelectorAll('.size').forEach(x => x.classList.toggle('on', x === b));
+}));
+document.querySelector('.size[data-size="4.5"]').classList.add('on');
+
+$('#undoB').addEventListener('click', undo);
+$('#redoB').addEventListener('click', redo);
+refreshUndo();
+
+$('#fingerB').addEventListener('click', () => {
+  fingerDraws = !fingerDraws;
+  $('#fingerB').classList.toggle('on', !fingerDraws);
+  toast(fingerDraws ? 'Finger draws · two fingers pan' : 'Finger pans · Pencil draws');
+});
+
+$('#themeB').addEventListener('click', () => {
+  dark = !dark;
+  document.body.classList.toggle('light', !dark);
+  paint();
+});
+
+/* zoom chip */
+function syncZoom(){ $('#zoomPct').textContent = Math.round(view.s * 100) + '%'; }
+function zoomBy(f){
+  const cx = innerWidth/2, cy = innerHeight/2;
+  const k = Math.max(0.25, Math.min(4, view.s * f)) / view.s;
+  view.x = cx - k * (cx - view.x); view.y = cy - k * (cy - view.y); view.s *= k;
+  syncZoom(); paint();
+}
+$('#zoomIn').addEventListener('click', () => zoomBy(1.25));
+$('#zoomOut').addEventListener('click', () => zoomBy(0.8));
+$('#zoomPct').addEventListener('click', () => { view = {x:0, y:0, s:1}; syncZoom(); paint(); toast('View reset'); });
+
+/* ---------------- modals ---------------- */
+function openModal(id){ $(id).classList.add('show'); }
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => b.closest('.modal').classList.remove('show')));
+document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if(e.target === m) m.classList.remove('show'); }));
+$('#shareB').addEventListener('click', () => openModal('#shareM'));
+$('#helpB').addEventListener('click', () => openModal('#helpM'));
+
+/* ---------------- share actions ---------------- */
+function boardJSON(){ return JSON.stringify({app:'pitboard', version:VERSION, elements}, null, 0); }
+
+$('#copyB').addEventListener('click', async () => {
+  const data = boardJSON();
+  let ok = false;
+  try { await navigator.clipboard.writeText(data); ok = true; } catch(_){}
+  if(!ok){
+    const box = $('#jsonBox'); box.value = data; box.select();
+    try { ok = document.execCommand('copy'); } catch(_){}
+  }
+  if(ok){ toast('Copied — paste it to Claude'); $('#shareM').classList.remove('show'); }
+  else { $('#jsonBox').value = data; toast('Select the text below and copy it'); }
+});
+
+$('#loadB').addEventListener('click', () => {
+  const raw = $('#jsonBox').value.trim();
+  if(!raw){ toast('Paste Claude’s JSON first'); return; }
+  try {
+    const m = raw.match(/\{[\s\S]*\}/);
+    const data = JSON.parse(m ? m[0] : raw);
+    if(!Array.isArray(data.elements)) throw new Error('no elements');
+    snapshot();
+    elements = data.elements;
+    selectedId = null; syncSel();
+    $('#jsonBox').value = ''; $('#shareM').classList.remove('show');
+    paint(); toast('Board updated from Claude ✓');
+  } catch(err){ toast('That JSON didn’t parse — check the paste'); }
+});
+
+let clearArmed = false;
+$('#clearB').addEventListener('click', () => {
+  if(!clearArmed){ clearArmed = true; $('#clearB').textContent = 'Tap again to clear';
+    setTimeout(() => { clearArmed = false; $('#clearB').textContent = 'Clear board'; }, 2200); return; }
+  clearArmed = false; $('#clearB').textContent = 'Clear board';
+  snapshot(); elements = []; selectedId = null; syncSel(); paint();
+  $('#shareM').classList.remove('show'); toast('Board cleared');
+});
+
+$('#jsonDlB').addEventListener('click', () => {
+  const blob = new Blob([boardJSON()], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'pitboard-drawing.json';
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast('Saved — send the .json to Claude');
+});
+
+$('#pngB').addEventListener('click', () => {
+  if(!elements.length){ toast('Nothing to export yet'); return; }
+  let x0=1e9, y0=1e9, x1=-1e9, y1=-1e9;
+  for(const el of elements){ const b = bbox(el);
+    x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
+    x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h); }
+  const pad = 40, W = (x1-x0) + pad*2, H = (y1-y0) + pad*2, S = 2;
+  const off = document.createElement('canvas'); off.width = W*S; off.height = H*S;
+  const octx = off.getContext('2d');
+  octx.fillStyle = getComputedStyle(document.body).getPropertyValue('--canvas-bg').trim();
+  octx.fillRect(0, 0, W*S, H*S);
+  octx.scale(S, S); octx.translate(pad - x0, pad - y0);
+  if(!octx.roundRect){ octx.roundRect = function(x,y,w,h){ this.rect(x,y,w,h); }; }
+  const realCtx = ctx;
+  try { ctx = octx; for(const el of elements) drawEl(el); }
+  finally { ctx = realCtx; }
+  off.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'pitboard.png';
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }, 'image/png');
+  toast('PNG exported');
+});
+
+/* ================= live sync (GitHub relay) =================
+   Board state lives at <repo>/board.json. Local edits push after a
+   1.5s debounce; a 3s ETag-poll pulls remote edits (304s are free
+   against GitHub's rate limit). Conflicts resolve with a 3-way merge
+   by element id: whoever changed an element since the last common
+   state wins; local wins if both did. */
+
+const SYNC_CONFIG = null; /* public build: credentials entered once in sync settings, kept in localStorage */
+
+const store = (() => { try { const t = window.localStorage;
+  t.setItem('__pb','1'); t.removeItem('__pb'); return t; } catch(e){ return null; } })();
+
+const sync = { on:false, cfg:null, sha:null, etag:null, base:'[]',
+  dirty:false, busy:false, rev:0, errs:0, pushT:null };
+
+function setPill(state){ const d = $('#syncDot');
+  d.className = state === 'off' ? '' : state; }
+
+function syncCfgLoad(){
+  if(SYNC_CONFIG) return SYNC_CONFIG;
+  if(store){ try { return JSON.parse(store.getItem('pb_sync') || 'null'); } catch(e){} }
+  return null;
+}
+function syncCfgSave(c){ if(store && !SYNC_CONFIG){ try { store.setItem('pb_sync', JSON.stringify(c)); } catch(e){} } }
+function syncCfgClear(){ if(store){ try { store.removeItem('pb_sync'); } catch(e){} } }
+
+function b64enc(str){ const b = new TextEncoder().encode(str); let s = '';
+  for(let i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, b.subarray(i, i + 8192));
+  return btoa(s); }
+function b64dec(s){ return new TextDecoder().decode(
+  Uint8Array.from(atob(s.replace(/\s/g,'')), c => c.charCodeAt(0))); }
+
+function ghHeaders(cfg){ return { 'Authorization':'Bearer ' + cfg.token,
+  'Accept':'application/vnd.github+json', 'X-GitHub-Api-Version':'2022-11-28' }; }
+function ghUrl(cfg, withRef){
+  const base = (cfg.apiBase || 'https://api.github.com') +
+    '/repos/' + cfg.repo + '/contents/' + (cfg.path || 'board.json');
+  return withRef ? base + '?ref=' + (cfg.branch || 'main') : base;
+}
+
+async function ghGet(cfg, useEtag){
+  const h = ghHeaders(cfg);
+  if(useEtag && sync.etag) h['If-None-Match'] = sync.etag;
+  const res = await fetch(ghUrl(cfg, true), { headers:h });
+  if(res.status === 304) return { unchanged:true };
+  if(res.status === 404) return { missing:true };
+  if(!res.ok) throw new Error('GitHub GET ' + res.status);
+  const j = await res.json();
+  let doc; try { doc = JSON.parse(b64dec(j.content)); } catch(e){ doc = { elements:[] }; }
+  return { sha:j.sha, etag:res.headers.get('ETag'), doc };
+}
+async function ghPut(cfg, doc, sha){
+  const body = { message:'pitboard: ' + (doc.updatedBy || 'edit') + ' rev ' + doc.rev,
+    content:b64enc(JSON.stringify(doc)), branch:(cfg.branch || 'main') };
+  if(sha) body.sha = sha;
+  const res = await fetch(ghUrl(cfg, false), { method:'PUT',
+    headers:{ ...ghHeaders(cfg), 'Content-Type':'application/json' }, body:JSON.stringify(body) });
+  if(res.status === 409 || res.status === 422) return { conflict:true };
+  if(!res.ok) throw new Error('GitHub PUT ' + res.status);
+  const j = await res.json();
+  return { sha:j.content.sha };
+}
+
+/* 3-way merge by element id */
+function mergeBoards(baseEls, localEls, remoteEls){
+  const bm = new Map(baseEls.map(e => [e.id, JSON.stringify(e)]));
+  const lm = new Map(localEls.map(e => [e.id, e]));
+  const rm = new Map(remoteEls.map(e => [e.id, e]));
+  const diff = (m, id) => { const cur = m.get(id);
+    if(cur === undefined) return bm.has(id);            /* deleted vs base */
+    return JSON.stringify(cur) !== bm.get(id); };       /* added or modified */
+  const out = [], seen = new Set();
+  for(const e of remoteEls){ seen.add(e.id);
+    if(diff(lm, e.id)){ if(lm.has(e.id)) out.push(lm.get(e.id)); } /* local wins; local-deleted stays gone */
+    else out.push(e); }
+  for(const e of localEls){ if(seen.has(e.id)) continue;
+    if(bm.has(e.id) && !rm.has(e.id) && !diff(lm, e.id)) continue; /* remote deleted, local untouched */
+    out.push(e); }
+  return out;
+}
+
+function boardDirty(){
+  if(!sync.on) return;
+  sync.dirty = true; setPill('warn');
+  clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, 1500);
+}
+
+function currentDoc(){ return { app:'pitboard', version:VERSION, rev:sync.rev,
+  updatedBy:(sync.cfg && sync.cfg.who) || 'sean', elements }; }
+
+async function syncPush(){
+  if(!sync.on || sync.busy || !sync.dirty) return;
+  sync.busy = true; setPill('warn');
+  try {
+    sync.rev++;
+    let r = await ghPut(sync.cfg, currentDoc(), sync.sha);
+    if(r.conflict){
+      const remote = await ghGet(sync.cfg, false);
+      if(!remote.missing){
+        elements = mergeBoards(JSON.parse(sync.base), elements, remote.doc.elements || []);
+        sync.rev = Math.max(sync.rev, (remote.doc.rev || 0) + 1);
+        paint();
+        r = await ghPut(sync.cfg, currentDoc(), remote.sha);
+        if(r.conflict) throw new Error('sync conflict');
+      } else throw new Error('remote vanished');
+    }
+    sync.sha = r.sha; sync.etag = null;
+    sync.base = JSON.stringify(elements);
+    sync.dirty = false; sync.errs = 0; setPill('ok');
+  } catch(e){
+    sync.errs++; setPill('err'); syncStat('Push failed: ' + e.message);
+    clearTimeout(sync.pushT); sync.pushT = setTimeout(syncPush, Math.min(30000, 5000 * sync.errs));
+  } finally { sync.busy = false; }
+}
+
+async function syncPoll(){
+  if(!sync.on || sync.busy || sync.dirty || document.hidden) return;
+  if(sync.errs > 2 && (syncPoll._skip = ((syncPoll._skip || 0) + 1) % 4) !== 0) return;
+  sync.busy = true;
+  try {
+    const r = await ghGet(sync.cfg, true);
+    if(!r.unchanged && !r.missing){
+      sync.etag = r.etag;
+      if(r.sha !== sync.sha){
+        sync.sha = r.sha; sync.rev = r.doc.rev || sync.rev;
+        undoStack.push(JSON.stringify(elements)); if(undoStack.length > 60) undoStack.shift();
+        refreshUndo();
+        elements = clone(r.doc.elements || []);
+        sync.base = JSON.stringify(elements);
+        selectedId = null; syncSel(); paint();
+        if((r.doc.updatedBy || '') !== ((sync.cfg && sync.cfg.who) || 'sean'))
+          toast('Claude updated the board ✓');
+      }
+    }
+    sync.errs = 0; setPill(sync.dirty ? 'warn' : 'ok');
+  } catch(e){ sync.errs++; setPill('err'); }
+  finally { sync.busy = false; }
+}
+
+async function syncConnect(cfg, quiet){
+  try {
+    setPill('warn'); syncStat('Connecting…');
+    const r = await ghGet(cfg, false);
+    sync.cfg = cfg; sync.on = true; sync.errs = 0;
+    if(r.missing || !(r.doc.elements || []).length){
+      /* nothing (or empty board) upstream: publish what's on screen */
+      sync.sha = r.missing ? null : r.sha; sync.base = '[]';
+      sync.rev = r.missing ? 0 : (r.doc.rev || 0);
+      sync.dirty = true; await syncPush();
+    } else {
+      sync.sha = r.sha; sync.etag = r.etag; sync.rev = r.doc.rev || 0;
+      undoStack.push(JSON.stringify(elements)); refreshUndo();
+      elements = clone(r.doc.elements); sync.base = JSON.stringify(elements);
+      selectedId = null; syncSel(); paint();
+    }
+    syncCfgSave(cfg); setPill('ok'); syncStat('Connected ✓ — board is live.');
+    if(!quiet){ toast('Live sync on ✓'); $('#syncM').classList.remove('show'); }
+  } catch(e){
+    sync.on = false; setPill('err');
+    syncStat('Could not connect: ' + e.message + ' — check repo name and token.');
+    if(!quiet) toast('Sync connection failed');
+  }
+}
+
+function syncStat(msg){ const s = $('#syncStat'); if(s) s.textContent = msg || ''; }
+
+/* sync UI wiring */
+$('#syncB').addEventListener('click', () => {
+  const c = sync.cfg || syncCfgLoad() || {};
+  $('#syncRepo').value = c.repo || 'Overtakersf1/pitboard-sync'; $('#syncToken').value = c.token || '';
+  $('#syncBranch').value = c.branch || 'main';
+  syncStat(sync.on ? 'Connected ✓ — board is live.' : '');
+  openModal('#syncM');
+});
+$('#syncGo').addEventListener('click', () => {
+  const repo = $('#syncRepo').value.trim().replace(/^https?:\/\/github\.com\//,'').replace(/\.git$/,'').replace(/\/+$/,'');
+  const token = $('#syncToken').value.trim();
+  const branch = $('#syncBranch').value.trim() || 'main';
+  if(!/^[^\/\s]+\/[^\/\s]+$/.test(repo)){ syncStat('Repo should look like owner/name.'); return; }
+  if(!token){ syncStat('Token is required.'); return; }
+  syncConnect({ repo, token, branch, who:'sean' });
+});
+$('#syncOff').addEventListener('click', () => {
+  sync.on = false; sync.cfg = null; syncCfgClear(); setPill('off');
+  syncStat('Disconnected. The Share menu still works as a fallback.');
+  toast('Live sync off');
+});
+
+setInterval(syncPoll, 3000);
+document.addEventListener('visibilitychange', () => { if(!document.hidden) syncPoll(); });
+
+/* ---------------- boot ---------------- */
+if(INITIAL_DRAWING && Array.isArray(INITIAL_DRAWING.elements))
+  elements = clone(INITIAL_DRAWING.elements);
+resize();
+syncZoom();
+requestAnimationFrame(frame);
+const bootCfg = syncCfgLoad();
+if(bootCfg) syncConnect(bootCfg, true);
+</script>
+</body>
+</html>
