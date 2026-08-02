@@ -172,8 +172,11 @@ struct CanvasView: UIViewRepresentable {
                 // The renderer draws width = size * (0.55 + 0.9 * pressure), so
                 // pick base = median width and solve pressure PER POINT so the
                 // renderer reproduces each captured width exactly.
+                // Empirically measured (screenshot pixel analysis): PencilKit's pen
+                // ink renders ~0.68x narrower than PKStrokePoint.size reports.
+                let CAL = 0.68
                 let sorted = widths.sorted()
-                let baseWidth = max(1.5, min(14.0, sorted[sorted.count / 2] * 0.95))
+                let baseWidth = max(1.0, min(14.0, sorted[sorted.count / 2] * CAL))
                 // calibration probe — read these in Xcode's console
                 let toolW = (canvas.tool as? PKInkingTool)?.width ?? -1
                 let zoom = canvas.zoomScale
@@ -182,7 +185,7 @@ struct CanvasView: UIViewRepresentable {
                              widths.count, zoom))
                 var pts: [[Double]] = []
                 for (i, loc) in locs.enumerated() {
-                    let ideal = (widths[i] * 0.95 / baseWidth - 0.55) / 0.9
+                    let ideal = (widths[i] * CAL / baseWidth - 0.55) / 0.9
                     let press = max(0.05, min(1.0, ideal))
                     pts.append([(loc.x * 100).rounded() / 100, (loc.y * 100).rounded() / 100,
                                 (press * 100).rounded() / 100])
