@@ -1,0 +1,5 @@
+# Xcode user state — never belongs in the repo
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.DS_Store
