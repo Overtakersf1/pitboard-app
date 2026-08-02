@@ -65,6 +65,20 @@
   #selChip button{border:none;border-radius:11px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;
     background:var(--chrome2);color:var(--txt);border:1px solid var(--edge);}
   #selChip button.danger{color:#ff7b7b;}
+  #cmdBar{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:25;display:none;
+    width:min(720px,92vw);background:color-mix(in srgb,var(--chrome) 92%, transparent);
+    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+    border:1px solid var(--edge);border-radius:16px;padding:10px;}
+  #cmdBar.show{display:block;}
+  #cmdRow{display:flex;gap:8px;align-items:center;}
+  #cmdInput{flex:1;background:var(--chrome2);color:var(--txt);border:1px solid var(--edge);
+    border-radius:11px;padding:11px 12px;font-size:15px;outline:none;}
+  #cmdInput:focus{border-color:var(--accent);}
+  #cmdGo{border:none;border-radius:11px;background:var(--accent);color:#08111d;
+    font-weight:700;font-size:14px;padding:11px 18px;cursor:pointer;flex:none;}
+  #cmdGo[disabled]{opacity:.5;}
+  #aiStatus{font-size:12.5px;color:var(--txt-dim);padding:6px 4px 0;min-height:18px;}
   #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 70px);transform:translateX(-50%) translateY(-8px);
     z-index:40;background:var(--chrome2);color:var(--txt);border:1px solid var(--edge);
     padding:9px 16px;border-radius:11px;font-size:13.5px;opacity:0;pointer-events:none;transition:.22s;}
@@ -110,7 +124,7 @@
 <canvas id="board"></canvas>
 
 <div id="bar">
-  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.8</span><span id="boardBadge" style="font-size:10px;color:var(--accent2);letter-spacing:.02em;margin-left:6px;"></span></div></div>
+  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.9</span><span id="boardBadge" style="font-size:10px;color:var(--accent2);letter-spacing:.02em;margin-left:6px;"></span></div></div>
   <div class="sep"></div>
   <div id="tools">
   <button class="btn tool" data-tool="select" title="Select / move">
@@ -150,6 +164,8 @@
   <button class="btn lit" id="helpB" title="Help">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.2a2.7 2.7 0 015.3.7c0 1.8-2.6 2.2-2.6 3.8"/><path d="M12 17h.01"/></svg></button>
   </div>
+  <button class="btn lit" id="aiB" title="AI command bar" style="flex:none;">
+    <svg viewBox="0 0 24 24"><path d="M13 2L4.5 13.5h5L10 22l8.5-11.5h-5z"/></svg></button>
   <button class="btn lit" id="boardsB" title="Boards" style="flex:none;">
     <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2"/><rect x="13" y="3.5" width="7.5" height="7.5" rx="2"/><rect x="3.5" y="13" width="7.5" height="7.5" rx="2"/><rect x="13" y="13" width="7.5" height="7.5" rx="2"/></svg></button>
   <button class="btn lit" id="syncB" title="Live sync settings" style="flex:none;"><span id="syncDot"></span></button>
@@ -184,6 +200,28 @@
     <button class="act primary" id="loadB">Load from pasted JSON</button>
     <button class="act" id="clearB">Clear board</button>
   </div>
+</div></div>
+
+<div id="cmdBar">
+  <div id="cmdRow">
+    <input id="cmdInput" placeholder="Tell the board what to do… e.g. add a green box called Fuel Pump" autocapitalize="off">
+    <button id="cmdGo">Do it</button>
+  </div>
+  <div id="aiStatus"></div>
+</div>
+
+<!-- AI settings modal -->
+<div class="modal" id="aiM"><div class="card">
+  <button class="close" data-close>✕</button>
+  <h2>AI command bar — Stage 1</h2>
+  <p class="sub">Typed commands become board edits via a small fast Claude model (Haiku-class) using your own Anthropic API key. Get one at console.anthropic.com (buy ~$5 credits and set a monthly spend limit). Commands cost well under a cent each.</p>
+  <input class="field" id="aiKey" placeholder="sk-ant-…  API key" type="password" autocomplete="off">
+  <input class="field" id="aiModel" placeholder="model (default: claude-haiku-4-5)" autocapitalize="off" autocomplete="off">
+  <div class="row">
+    <button class="act primary" id="aiSaveB">Save</button>
+    <button class="act" id="aiClearB">Clear key</button>
+  </div>
+  <p class="sub" id="aiStat" style="margin:6px 0 0"></p>
 </div></div>
 
 <!-- Boards modal -->
@@ -1020,6 +1058,172 @@ async function syncConnect(cfg, quiet){
 }
 
 function syncStat(msg){ const s = $('#syncStat'); if(s) s.textContent = msg || ''; }
+
+/* ================= AI command bar (Stage 1) =================
+   Typed command + current board -> small fast Claude model ->
+   validated ops {add, update, delete} -> applied + synced.
+   The op protocol is provider-agnostic on purpose (Pugh verdict):
+   swap the endpoint later without touching the board side. */
+
+const AI = { busy:false };
+
+function aiCfgLoad(){
+  if(store){ try { return JSON.parse(store.getItem('pb_ai') || 'null'); } catch(e){} }
+  return AI.mem || null;
+}
+function aiCfgSave(c){ AI.mem = c; if(store){ try { store.setItem('pb_ai', JSON.stringify(c)); } catch(e){} } }
+
+const AI_SYSTEM = `You are PitBoard's board-operation assistant. PitBoard is a shared drawing canvas. You receive the board's current elements as JSON and a user command. You respond with ONLY a JSON object (no prose, no code fences):
+{"reply":"<one short sentence describing what you did>","add":[<Element>...],"update":[{"id":"<existing id>",...changed fields}],"delete":["<existing id>"...]}
+
+Element types and required fields:
+- rect|ellipse|diamond: x,y,w,h (top-left + size), optional label (short), color, size (stroke width, default 3)
+- arrow|line: x1,y1,x2,y2, color, size 3
+- text: x,y,text,fontSize (14-30), color
+- stroke: points [[x,y,pressure0to1]...], color, size — avoid creating strokes unless asked to draw freehand
+
+Rules:
+- Canvas is 3000x2000, y grows downward. Place new content near related content or in clear space; never overlap existing elements.
+- Colors: "ink" (auto-contrast default), "#4da3ff" blue, "#ffb454" amber, "#ff6b6b" red, "#51d88a" green, "#b78cff" violet. Match the user's color words to these.
+- Arrows should visually connect shape edges (not centers).
+- Only reference existing ids for update/delete. Omit "id" on added elements (assigned by the app).
+- Prefer few, well-placed elements. Empty add/update/delete arrays are fine when the command needs none.
+- If the command is unclear or risky, do nothing and explain in "reply".`;
+
+function aiValidElement(el){
+  if(!el || typeof el !== 'object') return false;
+  const t = el.type;
+  const num = v => typeof v === 'number' && isFinite(v);
+  const clampS = (v, n) => typeof v === 'string' ? v.slice(0, n) : v;
+  if(t === 'rect' || t === 'ellipse' || t === 'diamond'){
+    if(!(num(el.x) && num(el.y) && num(el.w) && num(el.h))) return false;
+    el.label = clampS(el.label, 80);
+  } else if(t === 'arrow' || t === 'line'){
+    if(!(num(el.x1) && num(el.y1) && num(el.x2) && num(el.y2))) return false;
+  } else if(t === 'text'){
+    if(!(num(el.x) && num(el.y)) || typeof el.text !== 'string') return false;
+    el.text = clampS(el.text, 300);
+    if(!num(el.fontSize)) el.fontSize = 17;
+    el.fontSize = Math.max(10, Math.min(40, el.fontSize));
+  } else if(t === 'stroke'){
+    if(!Array.isArray(el.points) || !el.points.length || el.points.length > 600) return false;
+    if(!el.points.every(p => Array.isArray(p) && num(p[0]) && num(p[1]))) return false;
+  } else return false;
+  for(const k of ['x','y','x1','x2']) if(num(el[k])) el[k] = Math.max(-500, Math.min(3500, el[k]));
+  for(const k of ['y1','y2']) if(num(el[k])) el[k] = Math.max(-500, Math.min(2500, el[k]));
+  if(!num(el.size)) el.size = 3;
+  el.size = Math.max(1, Math.min(16, el.size));
+  if(typeof el.color !== 'string') el.color = 'ink';
+  return true;
+}
+
+const AI_FIELDS = ['x','y','w','h','x1','y1','x2','y2','text','label','color','size','fontSize','points','alpha'];
+
+function aiApplyOps(p){
+  const adds = (Array.isArray(p.add) ? p.add : []).slice(0, 40);
+  const ups  = (Array.isArray(p.update) ? p.update : []).slice(0, 60);
+  const dels = (Array.isArray(p.delete) ? p.delete : []).slice(0, 60);
+  let done = 0;
+  if(adds.length || ups.length || dels.length){
+    snapshot();
+    for(const el of adds){
+      if(!aiValidElement(el)) continue;
+      el.id = uid(); elements.push(el); done++;
+    }
+    for(const u of ups){
+      const el = elements.find(e => e.id === u.id);
+      if(!el) continue;
+      for(const k of AI_FIELDS) if(u[k] !== undefined) el[k] = u[k];
+      done++;
+    }
+    for(const id of dels){
+      const before = elements.length;
+      elements = elements.filter(e => e.id !== id);
+      if(elements.length < before) done++;
+    }
+    selectedId = null; syncSel(); paint();
+  }
+  return done;
+}
+
+async function aiRun(command){
+  const cfg = aiCfgLoad();
+  if(!cfg || !cfg.key){ openModal('#aiM'); return; }
+  if(AI.busy) return;
+  AI.busy = true;
+  const st = $('#aiStatus'); const go = $('#cmdGo');
+  go.disabled = true; st.textContent = 'Thinking…';
+  try {
+    const res = await fetch((cfg.apiBase || 'https://api.anthropic.com') + '/v1/messages', {
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'x-api-key': cfg.key,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body: JSON.stringify({
+        model: cfg.model || 'claude-haiku-4-5',
+        max_tokens: 3000,
+        system: [{ type:'text', text: AI_SYSTEM, cache_control:{ type:'ephemeral' } }],
+        messages: [{ role:'user', content:
+          'CURRENT BOARD ELEMENTS:\n' + JSON.stringify(elements) +
+          '\n\nCOMMAND: ' + command }]
+      })
+    });
+    if(!res.ok){
+      const t = await res.text();
+      throw new Error('API ' + res.status + ' — ' + t.slice(0, 160));
+    }
+    const j = await res.json();
+    const out = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    const m = out.match(/\{[\s\S]*\}/);
+    if(!m) throw new Error('no JSON in response');
+    const ops = JSON.parse(m[0]);
+    const n = aiApplyOps(ops);
+    st.textContent = (ops.reply || 'Done.') + (n ? ` (${n} change${n === 1 ? '' : 's'})` : '');
+    $('#cmdInput').value = '';
+  } catch(e){
+    st.textContent = '⚠ ' + e.message;
+  } finally {
+    AI.busy = false; go.disabled = false;
+  }
+}
+
+/* AI UI wiring */
+$('#aiB').addEventListener('click', () => {
+  const cfg = aiCfgLoad();
+  if(!cfg || !cfg.key){
+    $('#aiKey').value = ''; $('#aiModel').value = (cfg && cfg.model) || '';
+    $('#aiStat').textContent = ''; openModal('#aiM'); return;
+  }
+  const bar = $('#cmdBar');
+  bar.classList.toggle('show');
+  if(bar.classList.contains('show')) setTimeout(() => $('#cmdInput').focus(), 60);
+});
+$('#cmdGo').addEventListener('click', () => {
+  const t = $('#cmdInput').value.trim();
+  if(t) aiRun(t);
+});
+$('#cmdInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter'){ e.preventDefault(); const t = $('#cmdInput').value.trim(); if(t) aiRun(t); }
+});
+$('#aiSaveB').addEventListener('click', () => {
+  const key = $('#aiKey').value.trim();
+  const model = $('#aiModel').value.trim();
+  const prev = aiCfgLoad() || {};
+  if(!key && !prev.key){ $('#aiStat').textContent = 'Paste your API key (sk-ant-…).'; return; }
+  aiCfgSave({ ...prev, key: key || prev.key, model: model || prev.model || '' });
+  $('#aiM').classList.remove('show');
+  $('#cmdBar').classList.add('show');
+  setTimeout(() => $('#cmdInput').focus(), 60);
+  toast('AI command bar ready ⚡');
+});
+$('#aiClearB').addEventListener('click', () => {
+  aiCfgSave(null); AI.mem = null;
+  if(store){ try { store.removeItem('pb_ai'); } catch(e){} }
+  $('#aiStat').textContent = 'Key cleared.';
+});
 
 /* ---------------- boards ---------------- */
 function boardTitle(path){
