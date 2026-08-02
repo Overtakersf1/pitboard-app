@@ -9,6 +9,14 @@ big-touchscreen "talk and modify drawings together" setup.
   Schema: `{app:"pitboard", version:1, rev:N, updatedBy:"sean"|"claude", elements:[...]}`.
   Elements: stroke (points [[x,y,pressure]]), rect/ellipse/diamond (x,y,w,h,label),
   line/arrow (x1,y1,x2,y2), text (x,y,text,fontSize). color: "ink" = auto-contrast token, or #rrggbb.
+  v2.7 additions on strokes: `alpha` (0-1 translucency; absent = opaque) and `ink`
+  (source ink name: marker/watercolor/crayon/pencil — texture NOT rendered, only alpha).
+  Beacon convention: ellipse with id prefix "beacon-", label "👀", color #ff6b6b =
+  "Sean wants Claude's attention here" — check for these when reading the board.
+  ⚠ SCHEMA-CHANGE HAZARD: Swift Codable STRIPS unknown fields on re-encode. Adding a
+  field means old native builds scrub it from the whole board on their next push.
+  Rollout order: web first (JS preserves unknown fields), then native, THEN start
+  writing the new field.
 - **Web app**: public repo `Overtakersf1/pitboard-app`, root `index.html`, served at
   https://overtakersf1.github.io/pitboard-app/ (GitHub Pages). Credentials entered once,
   kept in localStorage. Version badge next to logo (v2.6 as of this writing).
@@ -62,11 +70,22 @@ big-touchscreen "talk and modify drawings together" setup.
 7. Debugging protocol that worked: version badges everywhere, controlled tests
    (fresh launch, zoom 1), console probes, and **pixel-measuring Sean's screenshots**
    beat five rounds of theory.
+8. Both renderers draw strokes as single-pass ribbon fills (never segmented
+   stroking) — required for clean alpha and to avoid AA self-fattening.
+9. Sandbox shell: `pkill -f <name>` matches the calling shell's own command line
+   if the name appears literally in it — construct patterns from variables, or
+   kill in a separate command.
 
 ## State & roadmap
 
-- v0.1.11 native: PencilKit ink + full sync; no object tools yet (web app covers that).
-  Eraser works on ink < 3.5s idle (pre-commit); undo button pops last element.
+- Native v0.2.1: full object toolset — select/move (drag, double-tap to edit
+  labels/text), erase-anything mode, shape tools with live preview, text tool
+  (Scribble-capable), snapshot undo/redo (60 deep), look-here beacon (one-shot,
+  drops beacon- ellipse). Object color palette in toolbar. Pan/zoom only in draw
+  mode (v0.2.0 scope cut — revisit if it annoys Sean).
+  Ink capture maps ink type → alpha: marker .55, watercolor .45, crayon .85,
+  pencil .9. Texture (crayon grain etc.) is a documented limitation — solid ribbon
+  silhouettes only; `ink` field is recorded for a possible future texture renderer.
 - Board contains: demo flowchart, Sean's handwriting tests, Overtakers update-process
   flowchart (cleaned by Claude), various test shapes.
 - **CI/CD is LIVE (2026-08-02)**: Apple Developer enrollment approved. Xcode Cloud
