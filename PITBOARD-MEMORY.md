@@ -5,7 +5,14 @@ big-touchscreen "talk and modify drawings together" setup.
 
 ## Architecture
 
-- **Board state**: `board.json` in private repo `Overtakersf1/pitboard-sync` (branch main).
+- **Board state**: private repo `Overtakersf1/pitboard-sync` (branch main). MULTI-BOARD
+  since web v2.8 / native v0.3.0: "Main" board = `board.json` (legacy path, kept for
+  compat); additional boards = `boards/<slug>.json`, same schema. Board list = the
+  boards/ directory listing (no index file). Clients remember last-open board
+  (localStorage / UserDefaults). Switching flushes pending pushes first; opening a
+  missing path auto-creates it (empty doc, rev 1). Claude: check ALL boards when asked
+  to "look at the board" — ask Sean which board if ambiguous, or scan boards/ dir.
+  Seeded: boards/scratchpad.json.
   Schema: `{app:"pitboard", version:1, rev:N, updatedBy:"sean"|"claude", elements:[...]}`.
   Elements: stroke (points [[x,y,pressure]]), rect/ellipse/diamond (x,y,w,h,label),
   line/arrow (x1,y1,x2,y2), text (x,y,text,fontSize). color: "ink" = auto-contrast token, or #rrggbb.
