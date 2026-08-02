@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var mode: BoardMode = .draw
     @State private var objColor: String = "ink"
     @State private var canvasCoordinator: CanvasView.Coordinator?
+    @State private var showBoards = false
 
     private let palette = ["ink", "#4da3ff", "#ffb454", "#ff6b6b", "#51d88a", "#b78cff"]
 
@@ -24,6 +25,7 @@ struct ContentView: View {
         }
         .background(Color(BoardRenderer.canvasBG))
         .sheet(isPresented: $showSettings) { SettingsSheet(engine: engine) }
+        .sheet(isPresented: $showBoards) { BoardsSheet(engine: engine) }
         .task {
             if engine.token != nil { await engine.connect() }
             else { showSettings = true }
@@ -65,6 +67,9 @@ struct ContentView: View {
                 }
             }
             Spacer(minLength: 4)
+            Button { showBoards = true } label: {
+                Image(systemName: "square.grid.2x2")
+            }.buttonStyle(ToolStyle(active: false))
             Button { fingerDraws.toggle() } label: {
                 Image(systemName: fingerDraws ? "hand.draw" : "hand.raised")
             }.buttonStyle(ToolStyle(active: false))
@@ -86,7 +91,8 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("PITBOARD").font(.system(size: 12, weight: .bold)).kerning(1.2)
                     .foregroundColor(.white)
-                Text("native v0.2.1").font(.system(size: 8)).foregroundColor(.gray)
+                Text("v0.3.0 · \(engine.boardTitle)").font(.system(size: 8))
+                    .foregroundColor(Color(red: 1.0, green: 0.71, blue: 0.33))
             }
         }
     }
@@ -150,6 +156,54 @@ struct ToolStyle: ButtonStyle {
             .background(active ? Color(red: 0.30, green: 0.64, blue: 1.0) : .clear)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .scaleEffect(configuration.isPressed ? 0.9 : 1)
+    }
+}
+
+struct BoardsSheet: View {
+    @ObservedObject var engine: SyncEngine
+    @Environment(\.dismiss) private var dismiss
+    @State private var boards: [SyncEngine.BoardRef] = []
+    @State private var newName = ""
+    @State private var loading = true
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Boards") {
+                    if loading { ProgressView() }
+                    ForEach(boards) { b in
+                        Button {
+                            dismiss()
+                            Task { await engine.switchBoard(b.path) }
+                        } label: {
+                            HStack {
+                                Text(b.title).foregroundColor(.primary)
+                                Spacer()
+                                if b.path == engine.path {
+                                    Image(systemName: "checkmark").foregroundColor(.accentColor)
+                                }
+                            }
+                        }
+                    }
+                }
+                Section("New board") {
+                    TextField("Board name", text: $newName)
+                    Button("Create & open") {
+                        let name = newName
+                        dismiss()
+                        Task { await engine.createBoard(named: name) }
+                    }
+                    .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                Section {
+                    Text("Each board is its own synced canvas — Claude sees them all. Your last board reopens next launch.")
+                        .font(.footnote).foregroundColor(.secondary)
+                }
+            }
+            .navigationTitle("Boards")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+        }
+        .task { boards = await engine.listBoards(); loading = false }
     }
 }
 

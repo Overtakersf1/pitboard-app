@@ -19,9 +19,17 @@ final class SyncEngine: ObservableObject {
     // config
     var repo = "Overtakersf1/pitboard-sync"
     var branch = "main"
-    var path = "board.json"
+    var path = UserDefaults.standard.string(forKey: "pb_board") ?? "board.json"
     var who = "sean"
     var token: String? { KeychainStore.load(key: "gh_token") }
+
+    @Published var boardEpoch = 0   // increments on board switch (clients clear undo etc.)
+    var boardTitle: String {
+        path == "board.json" ? "Main"
+            : path.replacingOccurrences(of: "boards/", with: "")
+                  .replacingOccurrences(of: ".json", with: "")
+                  .replacingOccurrences(of: "-", with: " ")
+    }
 
     // sync state
     private var sha: String?
@@ -74,6 +82,52 @@ final class SyncEngine: ObservableObject {
         pollTask?.cancel(); pollTask = nil
         pushTask?.cancel(); pushTask = nil
         status = .off
+    }
+
+    // MARK: - boards
+
+    struct BoardRef: Identifiable { var id: String { path }; let path: String; let title: String }
+
+    func listBoards() async -> [BoardRef] {
+        var out = [BoardRef(path: "board.json", title: "Main")]
+        do {
+            let req = try request("https://api.github.com/repos/\(repo)/contents/boards?ref=\(branch)")
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            if let http = resp as? HTTPURLResponse, http.statusCode == 200 {
+                struct Entry: Codable { let name: String }
+                let entries = (try? JSONDecoder().decode([Entry].self, from: data)) ?? []
+                for e in entries where e.name.hasSuffix(".json") {
+                    let p = "boards/\(e.name)"
+                    out.append(BoardRef(path: p,
+                        title: e.name.replacingOccurrences(of: ".json", with: "")
+                                     .replacingOccurrences(of: "-", with: " ")))
+                }
+            }
+        } catch {}
+        return out
+    }
+
+    /// Switch to (or create) a board. Pushes pending work first; new boards
+    /// auto-create via the connect flow (missing file -> publish empty doc).
+    func switchBoard(_ newPath: String) async {
+        if dirty { await pushNow() }
+        pollTask?.cancel(); pollTask = nil
+        pushTask?.cancel(); pushTask = nil
+        path = newPath
+        UserDefaults.standard.set(newPath, forKey: "pb_board")
+        sha = nil; etag = nil; base = []; rev = 0; dirty = false; errs = 0
+        elements = []
+        boardEpoch += 1
+        remoteBumped += 1
+        await connect()
+    }
+
+    func createBoard(named name: String) async {
+        let slug = name.lowercased()
+            .replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        guard !slug.isEmpty else { return }
+        await switchBoard("boards/\(slug).json")
     }
 
     private func startPolling() {

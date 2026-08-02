@@ -83,6 +83,10 @@ struct CanvasView: UIViewRepresentable {
         co.objColor = objColor
         co.canvas?.drawingPolicy = fingerDraws ? .anyInput : .pencilOnly
         if co.mode != mode { co.setMode(mode) }
+        if co.lastBoardEpoch != engine.boardEpoch {
+            co.lastBoardEpoch = engine.boardEpoch
+            co.clearUndoStacks()
+        }
         if co.lastRemoteBump != engine.remoteBumped {
             co.lastRemoteBump = engine.remoteBumped
             co.selectedId = nil
@@ -104,6 +108,7 @@ struct CanvasView: UIViewRepresentable {
         var objColor: String = "ink"
         var modeBinding: Binding<BoardMode>?
         var lastRemoteBump = -1
+        var lastBoardEpoch = 0
         var selectedId: String?
 
         private var picker: PKToolPicker?
@@ -280,6 +285,12 @@ struct CanvasView: UIViewRepresentable {
                 engine.boardChanged(); refreshLayer()
             }
         }
+        func clearUndoStacks() {
+            undoStack.removeAll(); redoStack.removeAll()
+            selectedId = nil
+            updateSelectionLayer()
+        }
+
         func deleteSelected() {
             guard let id = selectedId else { return }
             snapshotUndo()

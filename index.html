@@ -110,7 +110,7 @@
 <canvas id="board"></canvas>
 
 <div id="bar">
-  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.7</span></div></div>
+  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.8</span><span id="boardBadge" style="font-size:10px;color:var(--accent2);letter-spacing:.02em;margin-left:6px;"></span></div></div>
   <div class="sep"></div>
   <div id="tools">
   <button class="btn tool" data-tool="select" title="Select / move">
@@ -150,6 +150,8 @@
   <button class="btn lit" id="helpB" title="Help">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.2a2.7 2.7 0 015.3.7c0 1.8-2.6 2.2-2.6 3.8"/><path d="M12 17h.01"/></svg></button>
   </div>
+  <button class="btn lit" id="boardsB" title="Boards" style="flex:none;">
+    <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2"/><rect x="13" y="3.5" width="7.5" height="7.5" rx="2"/><rect x="3.5" y="13" width="7.5" height="7.5" rx="2"/><rect x="13" y="13" width="7.5" height="7.5" rx="2"/></svg></button>
   <button class="btn lit" id="syncB" title="Live sync settings" style="flex:none;"><span id="syncDot"></span></button>
   <button class="btn on" id="shareB" title="Share with Claude" style="width:auto;padding:0 14px;font-weight:700;font-size:13.5px;gap:6px;flex:none;">
     <svg viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/></svg>Share</button>
@@ -181,6 +183,18 @@
   <div class="row">
     <button class="act primary" id="loadB">Load from pasted JSON</button>
     <button class="act" id="clearB">Clear board</button>
+  </div>
+</div></div>
+
+<!-- Boards modal -->
+<div class="modal" id="boardsM"><div class="card">
+  <button class="close" data-close>✕</button>
+  <h2>Boards</h2>
+  <p class="sub">Each board is its own synced canvas in the repo. Claude sees them all.</p>
+  <div id="boardList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+  <div class="row">
+    <input class="field" id="newBoardName" placeholder="New board name…" autocapitalize="off" style="flex:1;min-width:140px;margin-bottom:0;">
+    <button class="act primary" id="createBoardB" style="flex:none;">Create</button>
   </div>
 </div></div>
 
@@ -996,6 +1010,7 @@ async function syncConnect(cfg, quiet){
       selectedId = null; syncSel(); paint();
     }
     syncCfgSave(cfg); setPill('ok'); syncStat('Connected ✓ — board is live.');
+    updateBoardBadge();
     if(!quiet){ toast('Live sync on ✓'); $('#syncM').classList.remove('show'); }
   } catch(e){
     sync.on = false; setPill('err');
@@ -1005,6 +1020,93 @@ async function syncConnect(cfg, quiet){
 }
 
 function syncStat(msg){ const s = $('#syncStat'); if(s) s.textContent = msg || ''; }
+
+/* ---------------- boards ---------------- */
+function boardTitle(path){
+  return (!path || path === 'board.json') ? 'Main'
+    : path.replace(/^boards\//, '').replace(/\.json$/, '').replace(/-/g, ' ');
+}
+function updateBoardBadge(){
+  $('#boardBadge').textContent = sync.on ? '· ' + boardTitle(sync.cfg && sync.cfg.path) : '';
+}
+
+async function listBoards(){
+  const out = [{ path:'board.json', title:'Main' }];
+  if(!sync.on) return out;
+  try {
+    const url = (sync.cfg.apiBase || 'https://api.github.com') +
+      '/repos/' + sync.cfg.repo + '/contents/boards?ref=' + (sync.cfg.branch || 'main');
+    const res = await fetch(url, { headers: ghHeaders(sync.cfg) });
+    if(res.ok){
+      const arr = await res.json();
+      if(Array.isArray(arr))
+        for(const f of arr)
+          if(f.name && f.name.endsWith('.json'))
+            out.push({ path:'boards/' + f.name, title: boardTitle('boards/' + f.name) });
+    }
+  } catch(e){}
+  return out;
+}
+
+async function switchBoard(path, silent){
+  if(!sync.on){ toast('Connect sync first'); return; }
+  if(sync.busy){ toast('Sync busy — try again in a second'); return; }
+  clearTimeout(sync.pushT);
+  if(sync.dirty) await syncPush();          /* don't abandon unpushed work */
+  sync.busy = true;
+  try {
+    sync.cfg.path = path;
+    sync.sha = null; sync.etag = null; sync.base = '[]'; sync.rev = 0; sync.dirty = false;
+    elements = []; selectedId = null; syncSel();
+    undoStack = []; redoStack = []; refreshUndo();
+    paint();
+    const r = await ghGet(sync.cfg, false);
+    if(!r.missing){
+      sync.sha = r.sha; sync.etag = r.etag; sync.rev = r.doc.rev || 0;
+      elements = clone(r.doc.elements || []);
+      sync.base = JSON.stringify(elements);
+      paint();
+    } else {
+      /* brand-new board: publish an empty doc so it exists for everyone */
+      sync.dirty = true;
+    }
+    syncCfgSave(sync.cfg);
+    updateBoardBadge(); setPill(sync.dirty ? 'warn' : 'ok');
+    if(!silent) toast('Board: ' + boardTitle(path));
+  } catch(e){ setPill('err'); toast('Board switch failed: ' + e.message); }
+  finally { sync.busy = false; if(sync.dirty) syncPush(); }
+}
+
+async function renderBoardList(){
+  const box = $('#boardList');
+  box.innerHTML = '<p class="sub" style="margin:0">Loading…</p>';
+  const boards = await listBoards();
+  box.innerHTML = '';
+  const cur = (sync.cfg && sync.cfg.path) || 'board.json';
+  for(const b of boards){
+    const btn = document.createElement('button');
+    btn.className = 'act' + (b.path === cur ? ' primary' : '');
+    btn.textContent = b.title + (b.path === cur ? '  ✓' : '');
+    btn.addEventListener('click', async () => {
+      $('#boardsM').classList.remove('show');
+      if(b.path !== cur) await switchBoard(b.path);
+    });
+    box.appendChild(btn);
+  }
+}
+
+$('#boardsB').addEventListener('click', () => {
+  if(!sync.on){ toast('Connect sync first (tap the dot)'); return; }
+  renderBoardList(); openModal('#boardsM');
+});
+$('#createBoardB').addEventListener('click', async () => {
+  const name = $('#newBoardName').value.trim();
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if(!slug){ toast('Give the board a name'); return; }
+  $('#newBoardName').value = '';
+  $('#boardsM').classList.remove('show');
+  await switchBoard('boards/' + slug + '.json');
+});
 
 /* sync UI wiring */
 $('#syncB').addEventListener('click', () => {
@@ -1020,7 +1122,8 @@ $('#syncGo').addEventListener('click', () => {
   const branch = $('#syncBranch').value.trim() || 'main';
   if(!/^[^\/\s]+\/[^\/\s]+$/.test(repo)){ syncStat('Repo should look like owner/name.'); return; }
   if(!token){ syncStat('Token is required.'); return; }
-  syncConnect({ repo, token, branch, who:'sean' });
+  const prevPath = (syncCfgLoad() || {}).path || 'board.json';
+  syncConnect({ repo, token, branch, who:'sean', path: prevPath });
 });
 $('#syncOff').addEventListener('click', () => {
   sync.on = false; sync.cfg = null; syncCfgClear(); setPill('off');
