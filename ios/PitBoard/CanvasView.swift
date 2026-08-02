@@ -36,7 +36,10 @@ struct CanvasView: UIViewRepresentable {
         let canvas = PKCanvasView()
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
-        canvas.overrideUserInterfaceStyle = .dark
+        // .light = "no color magic": PencilKit stores and displays colors
+        // literally instead of storing light-mode values and inverting at
+        // display time (which made committed white strokes turn black).
+        canvas.overrideUserInterfaceStyle = .light
         canvas.contentSize = BoardRenderer.worldSize
         canvas.minimumZoomScale = 0.25
         canvas.maximumZoomScale = 4.0
@@ -91,7 +94,7 @@ struct CanvasView: UIViewRepresentable {
             let p = PKToolPicker()
             p.setVisible(true, forFirstResponder: canvas)
             p.addObserver(canvas)
-            p.colorUserInterfaceStyle = .dark
+            p.colorUserInterfaceStyle = .light   // literal palette colors, no dark-mode inversion
             picker = p
             // First responder only sticks once the view is in a window;
             // retry briefly until it takes.
@@ -171,8 +174,10 @@ struct CanvasView: UIViewRepresentable {
                 var hex = "#f2f4f8"
                 var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
                 if resolved.getRed(&r, green: &g, blue: &b, alpha: &a) {
-                    if r > 0.92 && g > 0.92 && b > 0.92 {
-                        hex = "ink"   // near-white → auto-contrast token (web light mode safe)
+                    if (r > 0.92 && g > 0.92 && b > 0.92) || (r < 0.15 && g < 0.15 && b < 0.15) {
+                        // near-white OR near-black → auto-contrast token: on our dark
+                        // canvas both mean "default ink", and black would be invisible
+                        hex = "ink"
                     } else {
                         hex = String(format: "#%02x%02x%02x", Int(r*255), Int(g*255), Int(b*255))
                     }
