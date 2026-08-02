@@ -164,10 +164,18 @@ struct CanvasView: UIViewRepresentable {
                 }
                 guard !pts.isEmpty else { continue }
                 let avgWidth = widths.reduce(0, +) / Double(widths.count)
+                // PencilKit palette colors are dynamic (light/dark variants) —
+                // resolve for dark, since that's what the user saw on our canvas.
+                let resolved = stroke.ink.color.resolvedColor(
+                    with: UITraitCollection(userInterfaceStyle: .dark))
                 var hex = "#f2f4f8"
                 var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-                if stroke.ink.color.getRed(&r, green: &g, blue: &b, alpha: &a) {
-                    hex = String(format: "#%02x%02x%02x", Int(r*255), Int(g*255), Int(b*255))
+                if resolved.getRed(&r, green: &g, blue: &b, alpha: &a) {
+                    if r > 0.92 && g > 0.92 && b > 0.92 {
+                        hex = "ink"   // near-white → auto-contrast token (web light mode safe)
+                    } else {
+                        hex = String(format: "#%02x%02x%02x", Int(r*255), Int(g*255), Int(b*255))
+                    }
                 }
                 newElements.append(Element(id: newElementID(), type: "stroke",
                                            points: pts, color: hex,
