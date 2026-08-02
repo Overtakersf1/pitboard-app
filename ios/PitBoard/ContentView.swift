@@ -38,7 +38,7 @@ struct ContentView: View {
                     .overlay(Text("PB").font(.system(size: 11, weight: .heavy)).foregroundColor(.black))
                 Text("PITBOARD").font(.system(size: 13, weight: .bold)).kerning(1.5)
                     .foregroundColor(.white)
-                Text("native v0.1.10").font(.system(size: 10)).foregroundColor(.gray)
+                Text("native v0.1.11").font(.system(size: 10)).foregroundColor(.gray)
             }
             Spacer()
             Button { canvasCoordinator?.undoLast() } label: {

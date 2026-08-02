@@ -177,12 +177,6 @@ struct CanvasView: UIViewRepresentable {
                 let CAL = 0.68
                 let sorted = widths.sorted()
                 let baseWidth = max(1.0, min(14.0, sorted[sorted.count / 2] * CAL))
-                // calibration probe — read these in Xcode's console
-                let toolW = (canvas.tool as? PKInkingTool)?.width ?? -1
-                let zoom = canvas.zoomScale
-                print(String(format: "[PB-CAL] toolW=%.1f ptSize min=%.1f med=%.1f max=%.1f n=%d zoom=%.2f",
-                             toolW, sorted.first ?? 0, sorted[sorted.count/2], sorted.last ?? 0,
-                             widths.count, zoom))
                 var pts: [[Double]] = []
                 for (i, loc) in locs.enumerated() {
                     let ideal = (widths[i] * CAL / baseWidth - 0.55) / 0.9
