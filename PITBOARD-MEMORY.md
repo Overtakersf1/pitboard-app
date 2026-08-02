@@ -83,6 +83,23 @@ big-touchscreen "talk and modify drawings together" setup.
    if the name appears literally in it — construct patterns from variables, or
    kill in a separate command.
 
+## AI command bar (Stage 1, web v2.9)
+
+- Bolt button in toolbar -> bottom command bar. Typed command + full board JSON ->
+  Anthropic /v1/messages (browser-direct with anthropic-dangerous-direct-browser-access
+  header; system prompt carries cache_control ephemeral) -> model returns
+  {reply, add[], update[], delete[]} -> aiValidElement() clamps/validates ->
+  applied with undo snapshot -> synced via relay like any other edit.
+- Config in localStorage 'pb_ai' {key, model, apiBase}. Default model string
+  'claude-haiku-4-5' — VERIFY against the live model list once Sean has his key.
+  apiBase override points at the mock (port 8789 in mock-github.js) for tests.
+- Op protocol is provider-agnostic by design (see Pugh verdict on idea-space board):
+  the brain is swappable; re-run the matrix at wall-board time or for
+  GM-confidential content (privacy becomes a gate criterion there).
+- Stage 2 = dictation input (web speech / native). Stage 3 = wall board.
+- SEAN'S TODO: console.anthropic.com -> account + API key, buy ~$5 credits,
+  SET A MONTHLY SPEND LIMIT, then paste key via the bolt button.
+
 ## State & roadmap
 
 - Native v0.2.1: full object toolset — select/move (drag, double-tap to edit
