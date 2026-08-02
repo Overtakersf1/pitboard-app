@@ -142,6 +142,80 @@ nonisolated enum BoardRenderer {
         }
     }
 
+    // MARK: - geometry helpers for select/erase (v0.2)
+
+    static func bbox(_ el: Element) -> CGRect {
+        switch el.type {
+        case "stroke":
+            guard let pts = el.points, !pts.isEmpty else { return .zero }
+            var x0 = Double.infinity, y0 = Double.infinity
+            var x1 = -Double.infinity, y1 = -Double.infinity
+            for p in pts { x0 = min(x0, p[0]); y0 = min(y0, p[1]); x1 = max(x1, p[0]); y1 = max(y1, p[1]) }
+            return CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
+        case "line", "arrow":
+            guard let x1 = el.x1, let y1 = el.y1, let x2 = el.x2, let y2 = el.y2 else { return .zero }
+            return CGRect(x: min(x1, x2), y: min(y1, y2), width: abs(x2 - x1), height: abs(y2 - y1))
+        case "text":
+            guard let x = el.x, let y = el.y, let t = el.text else { return .zero }
+            let f = UIFont.systemFont(ofSize: CGFloat(el.fontSize ?? 17), weight: .medium)
+            let s = (t as NSString).size(withAttributes: [.font: f])
+            return CGRect(x: x, y: y, width: s.width, height: s.height)
+        default:
+            guard var x = el.x, var y = el.y, var w = el.w, var h = el.h else { return .zero }
+            if w < 0 { x += w; w = -w }
+            if h < 0 { y += h; h = -h }
+            return CGRect(x: x, y: y, width: w, height: h)
+        }
+    }
+
+    private static func distToSegment(_ p: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let dx = b.x - a.x, dy = b.y - a.y
+        let l2 = dx*dx + dy*dy
+        var t: CGFloat = l2 > 0 ? ((p.x - a.x)*dx + (p.y - a.y)*dy) / l2 : 0
+        t = max(0, min(1, t))
+        return hypot(a.x + t*dx - p.x, a.y + t*dy - p.y)
+    }
+
+    /// Topmost element within tolerance of a world point.
+    static func hitTest(_ els: [Element], at p: CGPoint, tol: CGFloat) -> Element? {
+        for el in els.reversed() {
+            let size = CGFloat(el.size ?? 4.5)
+            switch el.type {
+            case "stroke":
+                guard let pts = el.points, !pts.isEmpty else { continue }
+                if pts.count == 1 {
+                    if hypot(pts[0][0] - p.x, pts[0][1] - p.y) < tol + size { return el }
+                    continue
+                }
+                for i in 1..<pts.count {
+                    if distToSegment(p, CGPoint(x: pts[i-1][0], y: pts[i-1][1]),
+                                     CGPoint(x: pts[i][0], y: pts[i][1])) < tol + size { return el }
+                }
+            case "line", "arrow":
+                guard let x1 = el.x1, let y1 = el.y1, let x2 = el.x2, let y2 = el.y2 else { continue }
+                if distToSegment(p, CGPoint(x: x1, y: y1), CGPoint(x: x2, y: y2)) < tol + size { return el }
+            default:
+                if bbox(el).insetBy(dx: -tol, dy: -tol).contains(p) { return el }
+            }
+        }
+        return nil
+    }
+
+    static func move(_ el: inout Element, dx: Double, dy: Double) {
+        switch el.type {
+        case "stroke":
+            if var pts = el.points {
+                for i in 0..<pts.count { pts[i][0] += dx; pts[i][1] += dy }
+                el.points = pts
+            }
+        case "line", "arrow":
+            el.x1 = (el.x1 ?? 0) + dx; el.y1 = (el.y1 ?? 0) + dy
+            el.x2 = (el.x2 ?? 0) + dx; el.y2 = (el.y2 ?? 0) + dy
+        default:
+            el.x = (el.x ?? 0) + dx; el.y = (el.y ?? 0) + dy
+        }
+    }
+
     private static func shapePath(_ type: String, _ r: CGRect) -> CGPath {
         switch type {
         case "ellipse":
