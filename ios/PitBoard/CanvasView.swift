@@ -166,7 +166,12 @@ struct CanvasView: UIViewRepresentable {
                     widths.append(Double(p.size.width))
                 }
                 guard !pts.isEmpty else { continue }
+                // PKStrokePoint.size is the FINAL width (force already applied).
+                // Our renderer multiplies by (0.55 + 0.9*pressure), so divide that
+                // back out here or force gets applied twice and strokes fatten.
                 let avgWidth = widths.reduce(0, +) / Double(widths.count)
+                let avgForce = pts.map { $0[2] }.reduce(0, +) / Double(pts.count)
+                let baseWidth = avgWidth / (0.55 + 0.9 * avgForce) * 0.95
                 // PencilKit palette colors are dynamic (light/dark variants) —
                 // resolve for dark, since that's what the user saw on our canvas.
                 let resolved = stroke.ink.color.resolvedColor(
@@ -184,7 +189,7 @@ struct CanvasView: UIViewRepresentable {
                 }
                 newElements.append(Element(id: newElementID(), type: "stroke",
                                            points: pts, color: hex,
-                                           size: max(2.0, min(12.0, avgWidth * 0.55))))
+                                           size: max(1.5, min(14.0, baseWidth))))
             }
             guard !newElements.isEmpty else { return }
             suppressChange = true
