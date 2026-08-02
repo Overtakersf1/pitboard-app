@@ -4,6 +4,7 @@
 //  monotonic-rev stale-read guard, 3-way merge by element id.
 
 import Foundation
+import Combine
 
 enum SyncStatus { case off, ok, pending, error }
 
