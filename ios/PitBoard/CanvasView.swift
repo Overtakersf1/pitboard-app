@@ -65,6 +65,9 @@ struct CanvasView: UIViewRepresentable {
             context.coordinator.lastRemoteBump = engine.remoteBumped
             context.coordinator.refreshLayer()
         }
+        // The tool picker follows first-responder status; sheets (e.g. settings)
+        // steal it — take it back whenever SwiftUI re-renders us.
+        context.coordinator.reclaimToolPicker()
     }
 
     // MARK: - Coordinator
@@ -81,15 +84,31 @@ struct CanvasView: UIViewRepresentable {
 
         init(engine: SyncEngine) { self.engine = engine }
 
+        private var picker: PKToolPicker?
+
         func showToolPicker() {
             guard let canvas else { return }
-            let picker = PKToolPicker()
-            picker.setVisible(true, forFirstResponder: canvas)
-            picker.addObserver(canvas)
-            picker.colorUserInterfaceStyle = .dark
-            canvas.becomeFirstResponder()
-            // keep a strong reference
-            objc_setAssociatedObject(canvas, "picker", picker, .OBJC_ASSOCIATION_RETAIN)
+            let p = PKToolPicker()
+            p.setVisible(true, forFirstResponder: canvas)
+            p.addObserver(canvas)
+            p.colorUserInterfaceStyle = .dark
+            picker = p
+            // First responder only sticks once the view is in a window;
+            // retry briefly until it takes.
+            reclaimToolPicker()
+            for delay in [0.4, 1.0, 2.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    self?.reclaimToolPicker()
+                }
+            }
+        }
+
+        func reclaimToolPicker() {
+            guard let canvas, canvas.window != nil else { return }
+            if !canvas.isFirstResponder {
+                picker?.setVisible(true, forFirstResponder: canvas)
+                canvas.becomeFirstResponder()
+            }
         }
 
         func startDisplayLink() {
@@ -121,7 +140,9 @@ struct CanvasView: UIViewRepresentable {
                 guard !self.suppressChange else { return }
                 self.commitWork?.cancel()
                 self.commitWork = Task { [weak self] in
-                    try? await Task.sleep(nanoseconds: 600_000_000)
+                    // ink stays in PencilKit (erasable with the picker's eraser)
+                    // for 3.5s of idle before committing to the shared board
+                    try? await Task.sleep(nanoseconds: 3_500_000_000)
                     guard !Task.isCancelled else { return }
                     self?.commitStrokes()
                 }
