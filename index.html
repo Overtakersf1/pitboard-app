@@ -110,7 +110,7 @@
 <canvas id="board"></canvas>
 
 <div id="bar">
-  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.6</span></div></div>
+  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.7</span></div></div>
   <div class="sep"></div>
   <div id="tools">
   <button class="btn tool" data-tool="select" title="Select / move">
@@ -330,17 +330,38 @@ function drawEl(el){
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   switch(el.type){
     case 'stroke': {
-      const pts = el.points; if(pts.length < 2){ if(pts.length === 1){ ctx.beginPath(); ctx.arc(pts[0][0], pts[0][1], el.size/2, 0, 7); ctx.fill(); } break; }
-      for(let i = 1; i < pts.length; i++){
-        const p0 = pts[i-1], p1 = pts[i];
-        ctx.lineWidth = el.size * (0.55 + 0.9 * ((p0[2] + p1[2]) / 2));
-        ctx.beginPath();
-        if(i === 1) ctx.moveTo(p0[0], p0[1]);
-        else ctx.moveTo((pts[i-2][0]+p0[0])/2, (pts[i-2][1]+p0[1])/2);
-        ctx.quadraticCurveTo(p0[0], p0[1], (p0[0]+p1[0])/2, (p0[1]+p1[1])/2);
-        if(i === pts.length-1) ctx.lineTo(p1[0], p1[1]);
-        ctx.stroke();
+      const pts = el.points;
+      ctx.globalAlpha = (el.alpha != null ? el.alpha : 1);
+      if(pts.length < 2){
+        if(pts.length === 1){ ctx.beginPath(); ctx.arc(pts[0][0], pts[0][1], el.size/2, 0, 7); ctx.fill(); }
+        ctx.globalAlpha = 1; break;
       }
+      /* single-pass ribbon fill: offset the centerline by the half-width on
+         each side and fill ONCE — required for clean translucency (marker/
+         watercolor inks), and avoids AA self-compositing at segment joints */
+      const n = pts.length;
+      const hw = pts.map(p => el.size * (0.55 + 0.9 * (p[2] != null ? p[2] : 0.5)) / 2);
+      const L = [], R = [];
+      for(let i = 0; i < n; i++){
+        const a = pts[Math.max(0, i-1)], b = pts[Math.min(n-1, i+1)];
+        let dx = b[0]-a[0], dy = b[1]-a[1];
+        const len = Math.max(1e-4, Math.hypot(dx, dy)); dx /= len; dy /= len;
+        L.push([pts[i][0] - dy*hw[i], pts[i][1] + dx*hw[i]]);
+        R.push([pts[i][0] + dy*hw[i], pts[i][1] - dx*hw[i]]);
+      }
+      ctx.beginPath();
+      ctx.moveTo(L[0][0], L[0][1]);
+      for(let i = 1; i < n; i++) ctx.lineTo(L[i][0], L[i][1]);
+      ctx.arc(pts[n-1][0], pts[n-1][1], hw[n-1],
+              Math.atan2(L[n-1][1]-pts[n-1][1], L[n-1][0]-pts[n-1][0]),
+              Math.atan2(R[n-1][1]-pts[n-1][1], R[n-1][0]-pts[n-1][0]), true);
+      for(let i = n-1; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
+      ctx.arc(pts[0][0], pts[0][1], hw[0],
+              Math.atan2(R[0][1]-pts[0][1], R[0][0]-pts[0][0]),
+              Math.atan2(L[0][1]-pts[0][1], L[0][0]-pts[0][0]), true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
       break; }
     case 'rect': case 'ellipse': case 'diamond': {
       const {x, y, w, h} = normRect(el);

@@ -560,8 +560,16 @@ struct CanvasView: UIViewRepresentable {
                         hex = String(format: "#%02x%02x%02x", Int(r*255), Int(g*255), Int(b*255))
                     }
                 }
+                // ink type → translucency (texture itself isn't representable in the
+                // schema, but see-through-ness is most of marker/watercolor's character)
+                let inkName = stroke.ink.inkType.rawValue
+                    .components(separatedBy: ".").last ?? "pen"
+                let alphaMap: [String: Double] = ["marker": 0.55, "watercolor": 0.45,
+                                                 "crayon": 0.85, "pencil": 0.9]
                 newElements.append(Element(id: newElementID(), type: "stroke",
-                                           points: pts, color: hex, size: baseWidth))
+                                           points: pts, color: hex, size: baseWidth,
+                                           alpha: alphaMap[inkName],
+                                           ink: inkName == "pen" ? nil : inkName))
             }
             guard !newElements.isEmpty else { return }
             snapshotUndo()

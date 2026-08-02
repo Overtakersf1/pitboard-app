@@ -27,6 +27,8 @@ struct Element: Codable, Identifiable, Equatable {
     // common
     var color: String?          // "ink" or "#rrggbb"
     var size: Double?
+    var alpha: Double?          // stroke translucency (marker/watercolor); nil = opaque
+    var ink: String?            // source ink type ("marker", "crayon", …) for future texture renderers
 }
 
 struct BoardDoc: Codable {

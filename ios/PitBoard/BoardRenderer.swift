@@ -42,7 +42,8 @@ nonisolated enum BoardRenderer {
         switch el.type {
         case "stroke":
             guard let raw = el.points, !raw.isEmpty else { return }
-            ctx.setFillColor(col.cgColor)
+            let alpha = CGFloat(el.alpha ?? 1.0)
+            ctx.setFillColor(col.withAlphaComponent(alpha).cgColor)
             if raw.count == 1 {
                 let p = raw[0]
                 let w = Double(size) * (0.55 + 0.9 * (p.count > 2 ? p[2] : 0.5))

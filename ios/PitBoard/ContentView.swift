@@ -86,7 +86,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("PITBOARD").font(.system(size: 12, weight: .bold)).kerning(1.2)
                     .foregroundColor(.white)
-                Text("native v0.2.0").font(.system(size: 8)).foregroundColor(.gray)
+                Text("native v0.2.1").font(.system(size: 8)).foregroundColor(.gray)
             }
         }
     }
