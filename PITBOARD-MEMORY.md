@@ -69,8 +69,15 @@ big-touchscreen "talk and modify drawings together" setup.
   Eraser works on ink < 3.5s idle (pre-commit); undo button pops last element.
 - Board contains: demo flowchart, Sean's handwriting tests, Overtakers update-process
   flowchart (cleaned by Claude), various test shapes.
+- **CI/CD is LIVE (2026-08-02)**: Apple Developer enrollment approved. Xcode Cloud
+  workflow "Default" on pitboard-app builds on every push to main and delivers to
+  TestFlight internal group "Pit Crew" (tester seangleason@yahoo.com). App Store
+  Connect app name: "PitBoard Interface", bundle com.overtakers.PitBoard.
+  Claude's push → ~15 min → update appears in TestFlight on the iPad. No cable, no Mac.
+  Sean's .xcodeproj is committed in ios/ (his first push!). BoardRenderer is
+  `nonisolated` (Swift 6 concurrency clean). App icon in asset catalog (PB gradient).
 - Next options: **v0.2 native object tools** (shapes/text/select), Overtakers flow
-  build-out, **TestFlight CI** via GitHub Actions once Sean's $99 dev account is approved
-  (enrollment was in progress 2026-08-02), **Option C design doc** — canvas app calling
-  the Claude API directly (the real wall-touchscreen architecture).
+  build-out, **Option C design doc** — canvas app calling the Claude API directly
+  (the real wall-touchscreen architecture). Big-touchscreen decision: evidence strongly
+  positive ("PRETTY GREAT WORKFLOW!!" on the board, rev 106).
 - Sean's verdict on native pen feel: "RESPONSIVENESS IS WAY BETTER!!" (written on the board).
