@@ -41,31 +41,53 @@ enum BoardRenderer {
 
         switch el.type {
         case "stroke":
-            guard let pts = el.points, !pts.isEmpty else { return }
-            ctx.setStrokeColor(col.cgColor)
-            if pts.count == 1 {
-                let p = pts[0]
-                ctx.setFillColor(col.cgColor)
-                ctx.fillEllipse(in: CGRect(x: p[0] - Double(size)/2, y: p[1] - Double(size)/2,
-                                           width: Double(size), height: Double(size)))
+            guard let raw = el.points, !raw.isEmpty else { return }
+            ctx.setFillColor(col.cgColor)
+            if raw.count == 1 {
+                let p = raw[0]
+                let w = Double(size) * (0.55 + 0.9 * (p.count > 2 ? p[2] : 0.5))
+                ctx.fillEllipse(in: CGRect(x: p[0] - w/2, y: p[1] - w/2, width: w, height: w))
                 return
             }
-            for i in 1..<pts.count {
-                let p0 = pts[i-1], p1 = pts[i]
-                let press = CGFloat((p0.count > 2 ? p0[2] : 0.5) + (p1.count > 2 ? p1[2] : 0.5)) / 2
-                ctx.setLineWidth(size * (0.55 + 0.9 * press))
-                ctx.beginPath()
-                if i == 1 {
-                    ctx.move(to: CGPoint(x: p0[0], y: p0[1]))
-                } else {
-                    let pm = pts[i-2]
-                    ctx.move(to: CGPoint(x: (pm[0] + p0[0])/2, y: (pm[1] + p0[1])/2))
-                }
-                ctx.addQuadCurve(to: CGPoint(x: (p0[0] + p1[0])/2, y: (p0[1] + p1[1])/2),
-                                 control: CGPoint(x: p0[0], y: p0[1]))
-                if i == pts.count - 1 { ctx.addLine(to: CGPoint(x: p1[0], y: p1[1])) }
-                ctx.strokePath()
+            // Single-pass ribbon fill (PencilKit-style): offset the centerline
+            // by the half-width on each side and fill ONCE. Stroking dozens of
+            // overlapping capped segments double-composites the AA edges and
+            // visually fattens the line — this avoids that entirely.
+            var pl: [CGPoint] = []   // centerline
+            var hw: [CGFloat] = []   // half-widths
+            for p in raw {
+                pl.append(CGPoint(x: p[0], y: p[1]))
+                let press = CGFloat(p.count > 2 ? p[2] : 0.5)
+                hw.append(size * (0.55 + 0.9 * press) / 2)
             }
+            var left: [CGPoint] = [], right: [CGPoint] = []
+            let n = pl.count
+            for i in 0..<n {
+                let a = pl[max(0, i-1)], b = pl[min(n-1, i+1)]
+                var dx = b.x - a.x, dy = b.y - a.y
+                let len = max(0.0001, sqrt(dx*dx + dy*dy))
+                dx /= len; dy /= len
+                let nx = -dy, ny = dx
+                left.append(CGPoint(x: pl[i].x + nx*hw[i], y: pl[i].y + ny*hw[i]))
+                right.append(CGPoint(x: pl[i].x - nx*hw[i], y: pl[i].y - ny*hw[i]))
+            }
+            let path = CGMutablePath()
+            path.move(to: left[0])
+            for i in 1..<n { path.addLine(to: left[i]) }
+            // round end cap
+            path.addArc(center: pl[n-1], radius: hw[n-1],
+                        startAngle: atan2(left[n-1].y - pl[n-1].y, left[n-1].x - pl[n-1].x),
+                        endAngle: atan2(right[n-1].y - pl[n-1].y, right[n-1].x - pl[n-1].x),
+                        clockwise: true)
+            for i in stride(from: n-1, through: 0, by: -1) { path.addLine(to: right[i]) }
+            // round start cap
+            path.addArc(center: pl[0], radius: hw[0],
+                        startAngle: atan2(right[0].y - pl[0].y, right[0].x - pl[0].x),
+                        endAngle: atan2(left[0].y - pl[0].y, left[0].x - pl[0].x),
+                        clockwise: true)
+            path.closeSubpath()
+            ctx.addPath(path)
+            ctx.fillPath()
 
         case "rect", "ellipse", "diamond":
             guard var x = el.x, var y = el.y, var w = el.w, var h = el.h else { return }
