@@ -5,7 +5,7 @@
 
 import UIKit
 
-enum BoardRenderer {
+nonisolated enum BoardRenderer {
 
     static let worldSize = CGSize(width: 3000, height: 2000)
     static let canvasBG = UIColor(red: 0x14/255, green: 0x17/255, blue: 0x1D/255, alpha: 1)
