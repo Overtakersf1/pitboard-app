@@ -122,10 +122,15 @@ struct CanvasView: UIViewRepresentable {
         @objc private func tick() {
             guard let canvas, let imageView else { return }
             let z = canvas.zoomScale
-            imageView.frame = CGRect(x: -canvas.contentOffset.x,
-                                     y: -canvas.contentOffset.y,
-                                     width: BoardRenderer.worldSize.width * z,
-                                     height: BoardRenderer.worldSize.height * z)
+            // Snap to the physical pixel grid: a bitmap composited on a
+            // fractional offset gets resampled, smearing every stroke edge
+            // ~1px per side (the "committed strokes grow" bug).
+            let s = canvas.window?.screen.scale ?? 2
+            func snap(_ v: CGFloat) -> CGFloat { (v * s).rounded() / s }
+            imageView.frame = CGRect(x: snap(-canvas.contentOffset.x),
+                                     y: snap(-canvas.contentOffset.y),
+                                     width: snap(BoardRenderer.worldSize.width * z),
+                                     height: snap(BoardRenderer.worldSize.height * z))
         }
 
         func refreshLayer() {
