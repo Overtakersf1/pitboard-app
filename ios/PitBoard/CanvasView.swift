@@ -156,22 +156,26 @@ struct CanvasView: UIViewRepresentable {
             guard let canvas, !canvas.drawing.strokes.isEmpty else { return }
             var newElements: [Element] = []
             for stroke in canvas.drawing.strokes {
-                var pts: [[Double]] = []
+                var locs: [CGPoint] = []
                 var widths: [Double] = []
                 for p in stroke.path {
-                    let loc = p.location.applying(stroke.transform)
-                    let force = max(0.15, min(1.0, Double(p.force == 0 ? 0.5 : p.force)))
-                    pts.append([(loc.x * 100).rounded() / 100, (loc.y * 100).rounded() / 100,
-                                (force * 100).rounded() / 100])
+                    locs.append(p.location.applying(stroke.transform))
                     widths.append(Double(p.size.width))
                 }
-                guard !pts.isEmpty else { continue }
-                // PKStrokePoint.size is the FINAL width (force already applied).
-                // Our renderer multiplies by (0.55 + 0.9*pressure), so divide that
-                // back out here or force gets applied twice and strokes fatten.
-                let avgWidth = widths.reduce(0, +) / Double(widths.count)
-                let avgForce = pts.map { $0[2] }.reduce(0, +) / Double(pts.count)
-                let baseWidth = avgWidth / (0.55 + 0.9 * avgForce) * 0.95
+                guard !locs.isEmpty else { continue }
+                // PKStrokePoint.size is the FINAL rendered width at that point.
+                // The renderer draws width = size * (0.55 + 0.9 * pressure), so
+                // pick base = median width and solve pressure PER POINT so the
+                // renderer reproduces each captured width exactly.
+                let sorted = widths.sorted()
+                let baseWidth = max(1.5, min(14.0, sorted[sorted.count / 2] * 0.95))
+                var pts: [[Double]] = []
+                for (i, loc) in locs.enumerated() {
+                    let ideal = (widths[i] * 0.95 / baseWidth - 0.55) / 0.9
+                    let press = max(0.05, min(1.0, ideal))
+                    pts.append([(loc.x * 100).rounded() / 100, (loc.y * 100).rounded() / 100,
+                                (press * 100).rounded() / 100])
+                }
                 // PencilKit palette colors are dynamic (light/dark variants) —
                 // resolve for dark, since that's what the user saw on our canvas.
                 let resolved = stroke.ink.color.resolvedColor(
