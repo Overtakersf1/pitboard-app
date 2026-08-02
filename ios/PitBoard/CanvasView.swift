@@ -36,10 +36,10 @@ struct CanvasView: UIViewRepresentable {
         let canvas = PKCanvasView()
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
-        // .light = "no color magic": PencilKit stores and displays colors
-        // literally instead of storing light-mode values and inverting at
-        // display time (which made committed white strokes turn black).
-        canvas.overrideUserInterfaceStyle = .light
+        // Dark mode: the palette leads with white and ink DISPLAYS white while
+        // drawing — but PencilKit STORES the light-mode value (black). The
+        // near-black→"ink" mapping at commit time squares that circle.
+        canvas.overrideUserInterfaceStyle = .dark
         canvas.contentSize = BoardRenderer.worldSize
         canvas.minimumZoomScale = 0.25
         canvas.maximumZoomScale = 4.0
@@ -94,7 +94,7 @@ struct CanvasView: UIViewRepresentable {
             let p = PKToolPicker()
             p.setVisible(true, forFirstResponder: canvas)
             p.addObserver(canvas)
-            p.colorUserInterfaceStyle = .light   // literal palette colors, no dark-mode inversion
+            p.colorUserInterfaceStyle = .dark
             picker = p
             // First responder only sticks once the view is in a window;
             // retry briefly until it takes.
