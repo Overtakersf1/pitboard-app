@@ -73,11 +73,24 @@ default) or hex; palette: `#4da3ff` blue, `#ffb454` amber, `#ff6b6b` red,
 ## Reading and rendering
 
 Parse the JSON for structure, but **render before interpreting drawings** —
-handwriting and sketches only make sense visually. Use `scripts/render_board.js`
-(Playwright + the PitBoard web renderer):
+handwriting and sketches only make sense visually. Two renderers; pick by
+environment, don't fight the environment:
+
+**A. No-dependency fallback (works anywhere with Python + PIL — try this
+first in local VMs or unfamiliar sandboxes):**
 
 ```bash
-# one-time: clone the public app repo next to your board clone for index.html
+python3 scripts/render_board.py pb/board.json out.png [x0 y0 x1 y1] [--repo pb]
+```
+
+Near-parity fidelity for shapes/text/arrows/images; strokes are slightly
+simplified. If PIL is missing and can't be installed, fall back to the textual
+inventory (`board_utils.py show`) and say rendering wasn't possible.
+
+**B. Full-fidelity (needs Chromium — preinstalled at /opt/pw-browsers/chromium
+in Anthropic cloud sandboxes; do NOT try to download browsers in offline VMs):**
+
+```bash
 git clone --depth 1 https://github.com/Overtakersf1/pitboard-app.git app
 node scripts/render_board.js app/index.html pb/board.json out.png [x0 y0 x1 y1 zoom]
 ```
