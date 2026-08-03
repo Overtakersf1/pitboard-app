@@ -72,6 +72,7 @@ Rules:
 - Colors: "ink" (auto-contrast default), "#4da3ff" blue, "#ffb454" amber, "#ff6b6b" red, "#51d88a" green, "#b78cff" violet. Match the user's color words to these.
 - Arrows should visually connect shape edges (not centers).
 - Only reference existing ids for update/delete. Omit "id" on added elements (assigned by the app).
+- image elements exist ({x,y,w,h,src}); you may move/resize them via update but never create one or change src.
 - Prefer few, well-placed elements. Empty add/update/delete arrays are fine when the command needs none.
 - If the command is unclear or risky, do nothing and explain in "reply".
 """

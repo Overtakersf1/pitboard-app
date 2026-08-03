@@ -29,6 +29,7 @@ struct Element: Codable, Identifiable, Equatable {
     var size: Double?
     var alpha: Double?          // stroke translucency (marker/watercolor); nil = opaque
     var ink: String?            // source ink type ("marker", "crayon", …) for future texture renderers
+    var src: String?            // image elements: repo path e.g. "images/<id>.jpg"
 }
 
 struct BoardDoc: Codable {

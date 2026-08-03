@@ -84,6 +84,31 @@ final class SyncEngine: ObservableObject {
         status = .off
     }
 
+    // MARK: - repo files (images)
+
+    func fetchFile(_ path: String) async throws -> Data {
+        let req = try request("https://api.github.com/repos/\(repo)/contents/\(path)?ref=\(branch)")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw SyncError.badResponse }
+        struct C: Codable { let content: String }
+        let c = try JSONDecoder().decode(C.self, from: data)
+        let raw = c.content.replacingOccurrences(of: "\n", with: "")
+        guard let d = Data(base64Encoded: raw) else { throw SyncError.badResponse }
+        return d
+    }
+
+    func putFile(_ path: String, data: Data) async throws {
+        var req = try request("https://api.github.com/repos/\(repo)/contents/\(path)", method: "PUT")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["message": "pitboard: \(path)",
+                                   "content": data.base64EncodedString(), "branch": branch]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse,
+              [200, 201, 409, 422].contains(http.statusCode) else { throw SyncError.badResponse }
+        // 409/422 = already exists; images are immutable so that's success
+    }
+
     // MARK: - boards
 
     struct BoardRef: Identifiable { var id: String { path }; let path: String; let title: String }

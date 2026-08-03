@@ -124,7 +124,7 @@
 <canvas id="board"></canvas>
 
 <div id="bar">
-  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.9</span><span id="boardBadge" style="font-size:10px;color:var(--accent2);letter-spacing:.02em;margin-left:6px;"></span></div></div>
+  <div id="logo"><div class="mark">PB</div><div class="name">PIT<b>BOARD</b>&nbsp;<span style="font-size:10px;color:var(--txt-dim);letter-spacing:0;">v2.10</span><span id="boardBadge" style="font-size:10px;color:var(--accent2);letter-spacing:.02em;margin-left:6px;"></span></div></div>
   <div class="sep"></div>
   <div id="tools">
   <button class="btn tool" data-tool="select" title="Select / move">
@@ -146,6 +146,9 @@
     <svg viewBox="0 0 24 24"><path d="M5 19L19 5"/></svg></button>
   <button class="btn tool" data-tool="text" title="Text">
     <svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></button>
+  <button class="btn lit" id="imgB" title="Insert image">
+    <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 17l5-5 4 4 3-3 6 6"/></svg></button>
+  <input type="file" id="imgFile" accept="image/*" style="display:none">
   <div class="sep"></div>
   <div id="colors"></div>
   <div class="sep"></div>
@@ -308,7 +311,7 @@ let view = {x:0, y:0, s:1};
 let tool = 'pen';
 let color = 'ink';                 // 'ink' auto-contrasts with the theme
 let size = 4.5;
-let fingerDraws = true;
+let fingerDraws = false;   // finger pans by default (Sean's request); pencil always draws
 let dark = true;
 let selectedId = null;
 let undoStack = [], redoStack = [];
@@ -370,6 +373,11 @@ function draw(){
     const b = bbox(sel);
     ctx.strokeStyle = '#4da3ff'; ctx.lineWidth = 1.5/view.s; ctx.setLineDash([6/view.s, 5/view.s]);
     ctx.strokeRect(b.x - 8, b.y - 8, b.w + 16, b.h + 16); ctx.setLineDash([]);
+    if(RESIZABLE.has(sel.type)){
+      const hs = 12/view.s;
+      ctx.fillStyle = '#4da3ff';
+      ctx.fillRect(b.x + b.w + 8 - hs/2, b.y + b.h + 8 - hs/2, hs, hs);
+    }
   }
   ctx.restore();
   // eraser cursor
@@ -448,6 +456,25 @@ function drawEl(el){
       ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       ctx.fillText(el.text, el.x, el.y);
       break; }
+    case 'image': {
+      const r = normRect(el);
+      const img = imgGet(el.src);
+      if(img){
+        ctx.save();
+        ctx.globalAlpha = (el.alpha != null ? el.alpha : 1);
+        ctx.drawImage(img, r.x, r.y, r.w, r.h);
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.strokeStyle = '#5a6474'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+        ctx.strokeRect(r.x, r.y, r.w, r.h); ctx.setLineDash([]);
+        ctx.fillStyle = '#5a6474';
+        ctx.font = '14px -apple-system, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('loading image…', r.x + r.w/2, r.y + r.h/2);
+        ctx.restore();
+      }
+      break; }
   }
 }
 function shapePath(type, x, y, w, h){
@@ -512,6 +539,8 @@ const pointers = new Map();   // id -> {sx, sy, type}
 let tempEl = null;            // element being drawn
 let drawingPid = null;
 let dragInfo = null;          // {el, lx, ly, moved}
+let resizeInfo = null;        // {el, aspect}
+const RESIZABLE = new Set(['rect', 'ellipse', 'diamond', 'image']);
 let gesture = null;           // {d, cx, cy} pinch state
 let eraserPt = null;
 let lastTap = {t:0, x:0, y:0, id:null};
@@ -532,8 +561,8 @@ canvas.addEventListener('pointerdown', e => {
   }
   if(pointers.size > 1 && !isPen) return;
 
-  // finger in pan mode → single-finger pan
-  if(!isPen && !fingerDraws){ gesture = {pan:true, lx:e.clientX, ly:e.clientY}; return; }
+  // finger in pan mode → single-finger pan (touch only: mouse and pencil always use the tool)
+  if(e.pointerType === 'touch' && !fingerDraws){ gesture = {pan:true, lx:e.clientX, ly:e.clientY}; return; }
 
   const w = toWorld(e.clientX, e.clientY);
   beginAction(e, w);
@@ -561,6 +590,17 @@ function beginAction(e, w){
     case 'text':
       startTextAt(w); drawingPid = null; break;
     case 'select': {
+      /* resize grab: selected + near its bottom-right handle */
+      const selEl = elements.find(e => e.id === selectedId);
+      if(selEl && RESIZABLE.has(selEl.type)){
+        const b = bbox(selEl);
+        if(Math.hypot(w.x - (b.x + b.w + 8), w.y - (b.y + b.h + 8)) < 16/view.s){
+          snapshot();
+          resizeInfo = { el: selEl,
+                         aspect: selEl.type === 'image' ? (selEl.w / Math.max(1, selEl.h)) : null };
+          break;
+        }
+      }
       const hit = hitTest(w.x, w.y, 10/view.s);
       const now = performance.now();
       if(hit && lastTap.id === hit.id && now - lastTap.t < 380 && Math.hypot(w.x-lastTap.x, w.y-lastTap.y) < 24){
@@ -596,8 +636,16 @@ canvas.addEventListener('pointermove', e => {
     return;
   }
 
-  if(e.pointerId !== drawingPid && !dragInfo) return;
+  if(e.pointerId !== drawingPid && !dragInfo && !resizeInfo) return;
   const w = toWorld(e.clientX, e.clientY);
+
+  if(resizeInfo){
+    const el = resizeInfo.el;
+    el.w = Math.max(24, w.x - el.x - 8);
+    el.h = resizeInfo.aspect ? el.w / resizeInfo.aspect : Math.max(24, w.y - el.y - 8);
+    paint();
+    return;
+  }
 
   if(dragInfo){
     const dx = w.x - dragInfo.lx, dy = w.y - dragInfo.ly;
@@ -636,6 +684,7 @@ function endPointer(e){
     eraserPt = null;
   }
   if(dragInfo) dragInfo = null;
+  if(resizeInfo){ resizeInfo = null; boardDirty(); }
   paint();
 }
 canvas.addEventListener('pointerup', endPointer);
@@ -1059,6 +1108,78 @@ async function syncConnect(cfg, quiet){
 
 function syncStat(msg){ const s = $('#syncStat'); if(s) s.textContent = msg || ''; }
 
+/* ================= images ================= */
+const imgCache = {};      // src -> Image
+const imgPending = new Set();
+
+function imgGet(src){
+  if(!src) return null;
+  if(imgCache[src]) return imgCache[src];
+  if(!imgPending.has(src) && sync.cfg){
+    imgPending.add(src);
+    (async () => {
+      try {
+        const url = (sync.cfg.apiBase || 'https://api.github.com') +
+          '/repos/' + sync.cfg.repo + '/contents/' + src + '?ref=' + (sync.cfg.branch || 'main');
+        const res = await fetch(url, { headers: ghHeaders(sync.cfg) });
+        if(!res.ok) throw new Error(res.status);
+        const j = await res.json();
+        const im = new Image();
+        im.onload = () => { imgCache[src] = im; paint(); };
+        const mime = src.endsWith('.png') ? 'image/png' : 'image/jpeg';
+        im.src = 'data:' + mime + ';base64,' + j.content.replace(/\s/g, '');
+      } catch(e){ imgPending.delete(src); }
+    })();
+  }
+  return null;
+}
+
+async function ghPutFile(path, b64, message){
+  const res = await fetch(ghUrl(sync.cfg, false).replace(/contents\/.*$/, 'contents/' + path), {
+    method:'PUT',
+    headers:{ ...ghHeaders(sync.cfg), 'Content-Type':'application/json' },
+    body: JSON.stringify({ message: message || ('pitboard: ' + path), content: b64,
+                           branch: (sync.cfg.branch || 'main') })
+  });
+  if(res.status === 422 || res.status === 409) return true; /* already exists — immutable, fine */
+  if(!res.ok) throw new Error('upload ' + res.status);
+  return true;
+}
+
+$('#imgB').addEventListener('click', () => {
+  if(!sync.on){ toast('Connect sync first — images live in the repo'); return; }
+  $('#imgFile').click();
+});
+$('#imgFile').addEventListener('change', async e => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  toast('Preparing image…');
+  try {
+    const bmp = await createImageBitmap(file);
+    const MAX = 1600;
+    const scale = Math.min(1, MAX / Math.max(bmp.width, bmp.height));
+    const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+    const off = document.createElement('canvas'); off.width = w; off.height = h;
+    off.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    let q = 0.82, dataUrl;
+    do { dataUrl = off.toDataURL('image/jpeg', q); q -= 0.12; }
+    while(dataUrl.length > 1200000 && q > 0.3);   /* keep well under the 1MB API ceiling */
+    const b64 = dataUrl.split(',')[1];
+    const id = uid();
+    const src = 'images/' + id + '.jpg';
+    await ghPutFile(src, b64, 'pitboard: image ' + id);
+    /* place at view center, display-capped to 480px wide */
+    const cw = (innerWidth/2 - view.x) / view.s, ch = (innerHeight/2 - view.y) / view.s;
+    const dw = Math.min(480, w);
+    const dhv = dw * h / w;
+    const im = new Image(); im.src = dataUrl; imgCache[src] = im;
+    snapshot();
+    elements.push({ id, type:'image', x: cw - dw/2, y: ch - dhv/2, w: dw, h: dhv, src });
+    paint(); toast('Image added ✓');
+  } catch(err){ toast('Image failed: ' + err.message); }
+});
+
 /* ================= AI command bar (Stage 1) =================
    Typed command + current board -> small fast Claude model ->
    validated ops {add, update, delete} -> applied + synced.
@@ -1087,6 +1208,7 @@ Rules:
 - Colors: "ink" (auto-contrast default), "#4da3ff" blue, "#ffb454" amber, "#ff6b6b" red, "#51d88a" green, "#b78cff" violet. Match the user's color words to these.
 - Arrows should visually connect shape edges (not centers).
 - Only reference existing ids for update/delete. Omit "id" on added elements (assigned by the app).
+- image elements exist ({x,y,w,h,src}); you may move/resize them via update but never create one or change src.
 - Prefer few, well-placed elements. Empty add/update/delete arrays are fine when the command needs none.
 - If the command is unclear or risky, do nothing and explain in "reply".`;
 

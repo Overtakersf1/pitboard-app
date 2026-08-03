@@ -117,7 +117,11 @@ struct CanvasView: UIViewRepresentable {
         private var suppressChange = false
 
         private let selectionLayer = CAShapeLayer()
+        private let handleLayer = CAShapeLayer()
         private let previewLayer = CAShapeLayer()
+        private var resizingId: String?
+        private var resizeAspect: Double?
+        private let resizable: Set<String> = ["rect", "ellipse", "diamond", "image"]
 
         // gesture state
         private var dragStartWorld: CGPoint = .zero
@@ -190,6 +194,10 @@ struct CanvasView: UIViewRepresentable {
             selectionLayer.lineDashPattern = [6, 5]
             overlay.layer.addSublayer(selectionLayer)
 
+            handleLayer.fillColor = UIColor(red: 0.30, green: 0.64, blue: 1.0, alpha: 1).cgColor
+            handleLayer.strokeColor = nil
+            overlay.layer.addSublayer(handleLayer)
+
             previewLayer.fillColor = UIColor.white.withAlphaComponent(0.06).cgColor
             previewLayer.strokeColor = UIColor.white.withAlphaComponent(0.8).cgColor
             previewLayer.lineWidth = 2
@@ -224,11 +232,38 @@ struct CanvasView: UIViewRepresentable {
             updateSelectionLayer()
         }
 
+        private var imageCache: [String: UIImage] = [:]
+        private var imagePending: Set<String> = []
+
+        func primeImage(src: String, ui: UIImage) { imageCache[src] = ui }
+
+        func centerWorld() -> CGPoint {
+            guard let canvas else { return CGPoint(x: 1500, y: 1000) }
+            let z = canvas.zoomScale
+            return CGPoint(x: (canvas.contentOffset.x + canvas.bounds.width / 2) / z,
+                           y: (canvas.contentOffset.y + canvas.bounds.height / 2) / z)
+        }
+
         func refreshLayer() {
             guard let imageView else { return }
             let els = engine.elements
+            // fetch any images we haven't cached yet
+            for el in els where el.type == "image" {
+                guard let src = el.src, imageCache[src] == nil, !imagePending.contains(src)
+                else { continue }
+                imagePending.insert(src)
+                Task { [weak self] in
+                    guard let self else { return }
+                    if let d = try? await self.engine.fetchFile(src), let ui = UIImage(data: d) {
+                        self.imageCache[src] = ui
+                        self.refreshLayer()
+                    }
+                    self.imagePending.remove(src)
+                }
+            }
+            let imgs = imageCache
             Task.detached(priority: .userInitiated) {
-                let img = BoardRenderer.render(elements: els)
+                let img = BoardRenderer.render(elements: els, images: imgs)
                 await MainActor.run { imageView.image = img }
             }
         }
@@ -252,10 +287,17 @@ struct CanvasView: UIViewRepresentable {
         private func updateSelectionLayer() {
             guard let id = selectedId,
                   let el = engine.elements.first(where: { $0.id == id }) else {
-                selectionLayer.path = nil; return
+                selectionLayer.path = nil; handleLayer.path = nil; return
             }
             let r = toScreen(BoardRenderer.bbox(el)).insetBy(dx: -8, dy: -8)
             selectionLayer.path = CGPath(roundedRect: r, cornerWidth: 6, cornerHeight: 6, transform: nil)
+            if resizable.contains(el.type) {
+                let hs: CGFloat = 12
+                handleLayer.path = CGPath(ellipseIn:
+                    CGRect(x: r.maxX - hs/2, y: r.maxY - hs/2, width: hs, height: hs), transform: nil)
+            } else {
+                handleLayer.path = nil
+            }
         }
 
         // MARK: undo / redo
@@ -438,6 +480,20 @@ struct CanvasView: UIViewRepresentable {
             switch g.state {
             case .began:
                 commitTextField()
+                // resize grab: selected element + touch near its corner handle
+                if let sid = selectedId,
+                   let el = engine.elements.first(where: { $0.id == sid }),
+                   resizable.contains(el.type) {
+                    let b = BoardRenderer.bbox(el)
+                    let corner = CGPoint(x: b.maxX + 8, y: b.maxY + 8)
+                    if hypot(w.x - corner.x, w.y - corner.y) < 20 / (canvas?.zoomScale ?? 1) {
+                        snapshotUndo()
+                        resizingId = sid
+                        resizeAspect = el.type == "image"
+                            ? Double(max(1, b.width) / max(1, b.height)) : nil
+                        return
+                    }
+                }
                 let tol = 10.0 / (canvas?.zoomScale ?? 1)
                 if let hit = BoardRenderer.hitTest(engine.elements, at: w, tol: tol) {
                     selectedId = hit.id
@@ -447,6 +503,20 @@ struct CanvasView: UIViewRepresentable {
                 }
                 updateSelectionLayer()
             case .changed:
+                if let rid = resizingId,
+                   let idx = engine.elements.firstIndex(where: { $0.id == rid }) {
+                    let x0 = engine.elements[idx].x ?? 0
+                    let y0 = engine.elements[idx].y ?? 0
+                    let nw = max(24, Double(w.x) - x0 - 8)
+                    engine.elements[idx].w = nw
+                    engine.elements[idx].h = resizeAspect.map { nw / $0 }
+                        ?? max(24, Double(w.y) - y0 - 8)
+                    updateSelectionLayer()
+                    if Date().timeIntervalSince(lastDragRender) > 0.12 {
+                        lastDragRender = Date(); refreshLayer()
+                    }
+                    return
+                }
                 guard let id = draggingId,
                       let idx = engine.elements.firstIndex(where: { $0.id == id }) else { return }
                 let dx = w.x - dragLastWorld.x, dy = w.y - dragLastWorld.y
@@ -457,6 +527,10 @@ struct CanvasView: UIViewRepresentable {
                     lastDragRender = Date(); refreshLayer()
                 }
             case .ended, .cancelled:
+                if resizingId != nil {
+                    resizingId = nil; resizeAspect = nil
+                    engine.boardChanged(); refreshLayer()
+                }
                 if draggingId != nil {
                     draggingId = nil
                     engine.boardChanged(); refreshLayer()

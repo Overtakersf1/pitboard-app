@@ -22,7 +22,8 @@ nonisolated enum BoardRenderer {
     }
 
     /// Render all elements at the given scale (2.0 = retina-ish for the layer image).
-    static func render(elements: [Element], scale: CGFloat = 2.0) -> UIImage {
+    static func render(elements: [Element], images: [String: UIImage] = [:],
+                       scale: CGFloat = 2.0) -> UIImage {
         let fmt = UIGraphicsImageRendererFormat()
         fmt.scale = scale
         fmt.opaque = false
@@ -31,11 +32,11 @@ nonisolated enum BoardRenderer {
             let ctx = rc.cgContext
             ctx.setLineCap(.round)
             ctx.setLineJoin(.round)
-            for el in elements { draw(el, in: ctx) }
+            for el in elements { draw(el, in: ctx, images: images) }
         }
     }
 
-    private static func draw(_ el: Element, in ctx: CGContext) {
+    private static func draw(_ el: Element, in ctx: CGContext, images: [String: UIImage] = [:]) {
         let col = color(el.color)
         let size = CGFloat(el.size ?? 4.5)
 
@@ -128,6 +129,21 @@ nonisolated enum BoardRenderer {
                 ctx.move(to: CGPoint(x: x2, y: y2))
                 ctx.addLine(to: CGPoint(x: x2 - len * cos(a + 0.46), y: y2 - len * sin(a + 0.46)))
                 ctx.strokePath()
+            }
+
+        case "image":
+            guard var x = el.x, var y = el.y, var w = el.w, var h = el.h else { return }
+            if w < 0 { x += w; w = -w }
+            if h < 0 { y += h; h = -h }
+            let rect = CGRect(x: x, y: y, width: w, height: h)
+            if let src = el.src, let ui = images[src] {
+                ui.draw(in: rect, blendMode: .normal, alpha: CGFloat(el.alpha ?? 1.0))
+            } else {
+                ctx.setStrokeColor(UIColor(white: 0.4, alpha: 1).cgColor)
+                ctx.setLineWidth(2)
+                ctx.setLineDash(phase: 0, lengths: [6, 5])
+                ctx.stroke(rect)
+                ctx.setLineDash(phase: 0, lengths: [])
             }
 
         case "text":

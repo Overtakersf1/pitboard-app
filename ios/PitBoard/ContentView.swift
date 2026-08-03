@@ -3,10 +3,11 @@
 //  object color palette, undo/redo, sync status + settings
 
 import SwiftUI
+import PhotosUI
 
 struct ContentView: View {
     @StateObject private var engine = SyncEngine()
-    @State private var fingerDraws = true
+    @State private var fingerDraws = false   // finger pans by default; Pencil draws
     @State private var showSettings = false
     @State private var mode: BoardMode = .draw
     @State private var objColor: String = "ink"
@@ -17,6 +18,7 @@ struct ContentView: View {
     @State private var aiStatus = ""
     @State private var aiBusy = false
     @StateObject private var dictation = Dictation()
+    @State private var photoItem: PhotosPickerItem?
 
     private let palette = ["ink", "#4da3ff", "#ffb454", "#ff6b6b", "#51d88a", "#b78cff"]
 
@@ -37,6 +39,47 @@ struct ContentView: View {
             else { showSettings = true }
         }
         .statusBarHidden()
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            Task { await insertPhoto(item); photoItem = nil }
+        }
+    }
+
+    private func insertPhoto(_ item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              var ui = UIImage(data: data) else { aiStatus = "Couldn't read that image."; return }
+        let maxDim: CGFloat = 1600
+        let m = max(ui.size.width, ui.size.height)
+        if m > maxDim {
+            let s = maxDim / m
+            let ns = CGSize(width: ui.size.width * s, height: ui.size.height * s)
+            let fmt = UIGraphicsImageRendererFormat(); fmt.scale = 1
+            ui = UIGraphicsImageRenderer(size: ns, format: fmt).image { _ in
+                ui.draw(in: CGRect(origin: .zero, size: ns))
+            }
+        }
+        var q: CGFloat = 0.82
+        var jpeg = ui.jpegData(compressionQuality: q)
+        while let d = jpeg, d.count > 900_000, q > 0.3 {
+            q -= 0.12
+            jpeg = ui.jpegData(compressionQuality: q)
+        }
+        guard let d = jpeg else { return }
+        let id = newElementID()
+        let src = "images/\(id).jpg"
+        do { try await engine.putFile(src, data: d) }
+        catch { aiStatus = "Image upload failed — check sync."; return }
+        let center = canvasCoordinator?.centerWorld() ?? CGPoint(x: 1500, y: 1000)
+        let dw = min(480.0, Double(ui.size.width))
+        let dh = dw * Double(ui.size.height) / max(1.0, Double(ui.size.width))
+        canvasCoordinator?.primeImage(src: src, ui: ui)
+        canvasCoordinator?.snapshotUndoPublic()
+        engine.elements.append(Element(id: id, type: "image",
+                                       x: Double(center.x) - dw/2, y: Double(center.y) - dh/2,
+                                       w: dw, h: dh, src: src))
+        engine.boardChanged()
+        canvasCoordinator?.refreshLayer()
+        mode = .select
     }
 
     // MARK: - toolbar
@@ -57,6 +100,12 @@ struct ContentView: View {
                     modeButton(.line, "line.diagonal")
                     modeButton(.text, "textformat")
                     modeButton(.beacon, "eye")
+                    PhotosPicker(selection: $photoItem, matching: .images) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.white.opacity(0.85))
+                            .frame(width: 34, height: 34)
+                    }
                     divider
                     if mode != .draw { colorDots; divider }
                     Button { canvasCoordinator?.undo() } label: {
@@ -103,7 +152,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("PITBOARD").font(.system(size: 12, weight: .bold)).kerning(1.2)
                     .foregroundColor(.white)
-                Text("v0.4.1 · \(engine.boardTitle)").font(.system(size: 8))
+                Text("v0.5.0 · \(engine.boardTitle)").font(.system(size: 8))
                     .foregroundColor(Color(red: 1.0, green: 0.71, blue: 0.33))
             }
         }
