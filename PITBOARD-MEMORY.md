@@ -117,6 +117,24 @@ big-touchscreen "talk and modify drawings together" setup.
 - SEAN'S TODO: console.anthropic.com -> account + API key, buy ~$5 credits,
   SET A MONTHLY SPEND LIMIT, then paste key via the bolt button.
 
+## Sharing PitBoard with other users (PARKED — Sean curious, not ready)
+
+Architecture is inherently federated: each user brings own repo (storage), own
+API key (AI), own devices. Other users cost Sean nothing and can't touch his
+boards. Tiers if/when revisited:
+- Tier 0 (works today): hosted web app is already multi-user — anyone can enter
+  their own repo+token (all config is client-side). Native app hardcodes Sean's
+  repo (SyncEngine.swift `repo`) — build-from-source only for others.
+- Tier 1 (the sweet spot, ~a weekend): repo field in native settings, web
+  first-run setup wizard, README/SETUP.md, genericized skill template, MIT
+  LICENSE (repo currently has none = all-rights-reserved), TestFlight external
+  testing (Beta App Review, public link, up to 10k testers).
+- Tier 2 (real product, hosted backend, App Store): explicitly not pursuing —
+  kills the no-server/own-your-data property.
+Decision: live with the tool a few weeks first; onboarding docs improve with
+real usage data. Tier 1 work also benefits Sean directly (separate board repos,
+GM-confidential separation, wall board).
+
 ## State & roadmap
 
 - Native v0.2.1: full object toolset — select/move (drag, double-tap to edit
@@ -129,6 +147,16 @@ big-touchscreen "talk and modify drawings together" setup.
   silhouettes only; `ink` field is recorded for a possible future texture renderer.
 - Board contains: demo flowchart, Sean's handwriting tests, Overtakers update-process
   flowchart (cleaned by Claude), various test shapes.
+- **pitboard SKILL installed on Sean's account** (source versioned at skill/ in
+  pitboard-app): any session can read/render/edit/create boards. Bundled
+  scripts: render_board.js (Playwright harness), board_utils.py (rev-bump-safe
+  load/save, inventory, beacon detection). Token via pitboard-token.txt in the
+  iCloud folder or ask Sean.
+- Boards as of 2026-08-03: Main (board.json), scratchpad, pit-board-idea-space
+  (realtime-conversation architecture + Pugh verdict), overtakers (design wall,
+  created via skill procedure as live demo).
+- Stage 1+2 PROVEN IN USE: web AI bar working with Sean's key; native v0.5.0 =
+  AI bar + dictation + images + resize + finger-pan default.
 - **CI/CD is LIVE (2026-08-02)**: Apple Developer enrollment approved. Xcode Cloud
   workflow "Default" on pitboard-app builds on every push to main and delivers to
   TestFlight internal group "Pit Crew" (tester seangleason@yahoo.com). App Store
