@@ -5,7 +5,7 @@
 import Foundation
 
 struct AIUpdate: Codable {
-    var id: String
+    var id: String?          // tolerant: a missing id skips the op, not the batch
     var x: Double?; var y: Double?; var w: Double?; var h: Double?
     var x1: Double?; var y1: Double?; var x2: Double?; var y2: Double?
     var size: Double?; var fontSize: Double?; var alpha: Double?
@@ -13,9 +13,33 @@ struct AIUpdate: Codable {
     var points: [[Double]]?
 }
 
+/// Mirror of Element with EVERYTHING optional — the model is instructed to
+/// omit `id` on additions, so decoding straight into Element (required id)
+/// throws "data missing". This shim decodes tolerantly, then converts.
+struct AIAdd: Codable {
+    var id: String?
+    var type: String?
+    var points: [[Double]]?
+    var x: Double?; var y: Double?; var w: Double?; var h: Double?
+    var label: String?
+    var x1: Double?; var y1: Double?; var x2: Double?; var y2: Double?
+    var text: String?; var fontSize: Double?
+    var color: String?; var size: Double?
+    var alpha: Double?; var ink: String?
+
+    func toElement() -> Element? {
+        guard let type else { return nil }
+        return Element(id: id ?? newElementID(), type: type, points: points,
+                       x: x, y: y, w: w, h: h, label: label,
+                       x1: x1, y1: y1, x2: x2, y2: y2,
+                       text: text, fontSize: fontSize,
+                       color: color, size: size, alpha: alpha, ink: ink)
+    }
+}
+
 struct AIResponse: Codable {
     var reply: String?
-    var add: [Element]?
+    var add: [AIAdd]?
     var update: [AIUpdate]?
     var delete: [String]?
 }

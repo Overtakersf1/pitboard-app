@@ -103,7 +103,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("PITBOARD").font(.system(size: 12, weight: .bold)).kerning(1.2)
                     .foregroundColor(.white)
-                Text("v0.4.0 · \(engine.boardTitle)").font(.system(size: 8))
+                Text("v0.4.1 · \(engine.boardTitle)").font(.system(size: 8))
                     .foregroundColor(Color(red: 1.0, green: 0.71, blue: 0.33))
             }
         }

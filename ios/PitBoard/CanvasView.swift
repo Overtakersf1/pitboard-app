@@ -319,11 +319,12 @@ struct CanvasView: UIViewRepresentable {
         /// Apply a validated AI response. Returns the number of changes made.
         func applyAIOps(_ r: AIResponse) -> Int {
             var adds: [Element] = []
-            for var el in (r.add ?? []).prefix(40) where aiValid(&el) {
+            for raw in (r.add ?? []).prefix(40) {
+                guard var el = raw.toElement(), aiValid(&el) else { continue }
                 el.id = newElementID()
                 adds.append(el)
             }
-            let ups = (r.update ?? []).prefix(60)
+            let ups = (r.update ?? []).prefix(60).filter { $0.id != nil }
             let dels = (r.delete ?? []).prefix(60)
             var count = 0
             let hasWork = !adds.isEmpty ||
