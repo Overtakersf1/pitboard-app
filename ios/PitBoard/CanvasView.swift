@@ -285,6 +285,86 @@ struct CanvasView: UIViewRepresentable {
                 engine.boardChanged(); refreshLayer()
             }
         }
+        // MARK: AI ops (Stage 1/2)
+
+        private func aiValid(_ el: inout Element) -> Bool {
+            func num(_ v: Double?) -> Bool { v != nil && v!.isFinite }
+            switch el.type {
+            case "rect", "ellipse", "diamond":
+                guard num(el.x), num(el.y), num(el.w), num(el.h) else { return false }
+                if let l = el.label { el.label = String(l.prefix(80)) }
+            case "arrow", "line":
+                guard num(el.x1), num(el.y1), num(el.x2), num(el.y2) else { return false }
+            case "text":
+                guard num(el.x), num(el.y), let t = el.text else { return false }
+                el.text = String(t.prefix(300))
+                el.fontSize = min(40, max(10, el.fontSize ?? 17))
+            case "stroke":
+                guard let pts = el.points, !pts.isEmpty, pts.count <= 600,
+                      pts.allSatisfy({ $0.count >= 2 && $0[0].isFinite && $0[1].isFinite })
+                else { return false }
+            default: return false
+            }
+            if let v = el.x  { el.x  = min(3500, max(-500, v)) }
+            if let v = el.y  { el.y  = min(2500, max(-500, v)) }
+            if let v = el.x1 { el.x1 = min(3500, max(-500, v)) }
+            if let v = el.x2 { el.x2 = min(3500, max(-500, v)) }
+            if let v = el.y1 { el.y1 = min(2500, max(-500, v)) }
+            if let v = el.y2 { el.y2 = min(2500, max(-500, v)) }
+            el.size = min(16, max(1, el.size ?? 3))
+            if el.color == nil { el.color = "ink" }
+            return true
+        }
+
+        /// Apply a validated AI response. Returns the number of changes made.
+        func applyAIOps(_ r: AIResponse) -> Int {
+            var adds: [Element] = []
+            for var el in (r.add ?? []).prefix(40) where aiValid(&el) {
+                el.id = newElementID()
+                adds.append(el)
+            }
+            let ups = (r.update ?? []).prefix(60)
+            let dels = (r.delete ?? []).prefix(60)
+            var count = 0
+            let hasWork = !adds.isEmpty ||
+                ups.contains { u in engine.elements.contains { $0.id == u.id } } ||
+                dels.contains { id in engine.elements.contains { $0.id == id } }
+            guard hasWork else { return 0 }
+            snapshotUndoPublic()
+            engine.elements.append(contentsOf: adds); count += adds.count
+            for u in ups {
+                guard let i = engine.elements.firstIndex(where: { $0.id == u.id }) else { continue }
+                if let v = u.x { engine.elements[i].x = v }
+                if let v = u.y { engine.elements[i].y = v }
+                if let v = u.w { engine.elements[i].w = v }
+                if let v = u.h { engine.elements[i].h = v }
+                if let v = u.x1 { engine.elements[i].x1 = v }
+                if let v = u.y1 { engine.elements[i].y1 = v }
+                if let v = u.x2 { engine.elements[i].x2 = v }
+                if let v = u.y2 { engine.elements[i].y2 = v }
+                if let v = u.size { engine.elements[i].size = min(16, max(1, v)) }
+                if let v = u.fontSize { engine.elements[i].fontSize = min(40, max(10, v)) }
+                if let v = u.alpha { engine.elements[i].alpha = min(1, max(0.05, v)) }
+                if let v = u.text { engine.elements[i].text = String(v.prefix(300)) }
+                if let v = u.label { engine.elements[i].label = String(v.prefix(80)) }
+                if let v = u.color { engine.elements[i].color = v }
+                if let v = u.points { engine.elements[i].points = v }
+                count += 1
+            }
+            for id in dels {
+                let before = engine.elements.count
+                engine.elements.removeAll { $0.id == id }
+                if engine.elements.count < before { count += 1 }
+            }
+            selectedId = nil
+            updateSelectionLayer()
+            engine.boardChanged()
+            refreshLayer()
+            return count
+        }
+
+        func snapshotUndoPublic() { snapshotUndo() }
+
         func clearUndoStacks() {
             undoStack.removeAll(); redoStack.removeAll()
             selectedId = nil

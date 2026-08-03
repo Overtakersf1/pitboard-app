@@ -12,6 +12,11 @@ struct ContentView: View {
     @State private var objColor: String = "ink"
     @State private var canvasCoordinator: CanvasView.Coordinator?
     @State private var showBoards = false
+    @State private var showCmdBar = false
+    @State private var cmdText = ""
+    @State private var aiStatus = ""
+    @State private var aiBusy = false
+    @StateObject private var dictation = Dictation()
 
     private let palette = ["ink", "#4da3ff", "#ffb454", "#ff6b6b", "#51d88a", "#b78cff"]
 
@@ -22,6 +27,7 @@ struct ContentView: View {
                        mode: $mode, objColor: $objColor,
                        coordinatorRef: $canvasCoordinator)
                 .ignoresSafeArea(edges: .bottom)
+                .overlay(alignment: .bottom) { if showCmdBar { commandBar } }
         }
         .background(Color(BoardRenderer.canvasBG))
         .sheet(isPresented: $showSettings) { SettingsSheet(engine: engine) }
@@ -67,6 +73,12 @@ struct ContentView: View {
                 }
             }
             Spacer(minLength: 4)
+            Button {
+                if KeychainStore.load(key: "ai_key")?.isEmpty ?? true { showSettings = true }
+                else { showCmdBar.toggle() }
+            } label: {
+                Image(systemName: "bolt.fill")
+            }.buttonStyle(ToolStyle(active: showCmdBar, tint: .yellow))
             Button { showBoards = true } label: {
                 Image(systemName: "square.grid.2x2")
             }.buttonStyle(ToolStyle(active: false))
@@ -91,7 +103,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("PITBOARD").font(.system(size: 12, weight: .bold)).kerning(1.2)
                     .foregroundColor(.white)
-                Text("v0.3.0 · \(engine.boardTitle)").font(.system(size: 8))
+                Text("v0.4.0 · \(engine.boardTitle)").font(.system(size: 8))
                     .foregroundColor(Color(red: 1.0, green: 0.71, blue: 0.33))
             }
         }
@@ -128,6 +140,75 @@ struct ContentView: View {
         return Color(red: Double((v >> 16) & 0xFF)/255,
                      green: Double((v >> 8) & 0xFF)/255,
                      blue: Double(v & 0xFF)/255)
+    }
+
+    // MARK: - AI command bar (Stage 1 + 2)
+
+    private var commandBar: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                TextField("Tell the board what to do…", text: $cmdText)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(Color.black.opacity(0.4))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .foregroundColor(.white)
+                    .autocorrectionDisabled()
+                    .onSubmit { runCommand() }
+                Button { micTapped() } label: {
+                    Image(systemName: dictation.listening ? "mic.fill" : "mic")
+                        .font(.system(size: 17))
+                        .foregroundColor(dictation.listening ? .red : .white.opacity(0.85))
+                        .frame(width: 40, height: 40)
+                        .background(dictation.listening ? Color.red.opacity(0.25) : Color.clear)
+                        .clipShape(Circle())
+                }
+                Button { runCommand() } label: {
+                    Text(aiBusy ? "…" : "Do it").font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(Color(red: 0.30, green: 0.64, blue: 1.0))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }.disabled(aiBusy)
+            }
+            if !aiStatus.isEmpty {
+                Text(aiStatus).font(.system(size: 12)).foregroundColor(.gray)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .frame(maxWidth: 720)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 90)   // clear of the PencilKit tool palette
+        .onAppear {
+            dictation.onText = { text, isFinal in
+                if !text.isEmpty { cmdText = text }
+                if isFinal { runCommand() }
+            }
+        }
+    }
+
+    private func micTapped() {
+        if !dictation.listening { cmdText = ""; aiStatus = "Listening…" }
+        dictation.toggle()
+    }
+
+    private func runCommand() {
+        let cmd = cmdText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cmd.isEmpty, !aiBusy else { return }
+        aiBusy = true; aiStatus = "Thinking…"
+        Task {
+            do {
+                let resp = try await AIClient.run(command: cmd, elements: engine.elements)
+                let n = canvasCoordinator?.applyAIOps(resp) ?? 0
+                aiStatus = (resp.reply ?? "Done.") + (n > 0 ? " (\(n) change\(n == 1 ? "" : "s"))" : "")
+                cmdText = ""
+            } catch {
+                aiStatus = "⚠ \(error.localizedDescription)"
+            }
+            aiBusy = false
+        }
     }
 
     private var statusDot: some View {
@@ -211,6 +292,8 @@ struct SettingsSheet: View {
     @ObservedObject var engine: SyncEngine
     @Environment(\.dismiss) private var dismiss
     @State private var tokenInput = ""
+    @State private var aiKeyInput = ""
+    @State private var aiModelInput = UserDefaults.standard.string(forKey: "ai_model") ?? ""
 
     var body: some View {
         NavigationStack {
@@ -234,6 +317,22 @@ struct SettingsSheet: View {
                     if engine.isConnected {
                         Button("Disconnect", role: .destructive) { engine.disconnect(); dismiss() }
                     }
+                }
+                Section("AI command bar (bolt button)") {
+                    SecureField("sk-ant-…  Anthropic API key", text: $aiKeyInput)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("model (default: claude-haiku-4-5)", text: $aiModelInput)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Button("Save AI settings") {
+                        if !aiKeyInput.isEmpty {
+                            KeychainStore.save(aiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines),
+                                               key: "ai_key")
+                        }
+                        UserDefaults.standard.set(aiModelInput.trimmingCharacters(in: .whitespaces),
+                                                  forKey: "ai_model")
+                        dismiss()
+                    }
+                    .disabled(aiKeyInput.isEmpty && (KeychainStore.load(key: "ai_key")?.isEmpty ?? true))
                 }
                 if !engine.lastError.isEmpty {
                     Section("Last error") { Text(engine.lastError).font(.footnote) }
