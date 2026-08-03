@@ -64,7 +64,12 @@ Element types (fields beyond `id`, `type`, `color`, `size`):
 - `rect` / `ellipse` / `diamond`: `x,y,w,h`, optional `label` (renders centered)
 - `line` / `arrow`: `x1,y1,x2,y2` (arrowhead at x2,y2)
 - `text`: `x,y,text,fontSize`
-- `image`: `x,y,w,h,src` (repo path) — you may move/resize; **never create one or change src**
+- `image`: `x,y,w,h,src` (repo path). Move/resize freely. You MAY create images
+  (charts, mockups, processed photos): write the binary to `images/<unique-id>.jpg`
+  (≤1600px, JPEG, <900KB), commit it with the element in the same push. But
+  **never change the src of an existing element and never overwrite an existing
+  image file** — images are immutable and clients cache by path. (The in-app
+  command-bar AI can't create images at all; that restriction is its, not yours.)
 
 Canvas is 3000×2000, y grows downward. `color` is `"ink"` (auto-contrast
 default) or hex; palette: `#4da3ff` blue, `#ffb454` amber, `#ff6b6b` red,
