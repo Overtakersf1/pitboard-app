@@ -96,7 +96,12 @@ big-touchscreen "talk and modify drawings together" setup.
 - Op protocol is provider-agnostic by design (see Pugh verdict on idea-space board):
   the brain is swappable; re-run the matrix at wall-board time or for
   GM-confidential content (privacy becomes a gate criterion there).
-- Stage 2 = dictation input (web speech / native). Stage 3 = wall board.
+- Stage 2 SHIPPED in native v0.4.0: bolt button -> command bar (TextField + mic).
+  AIClient.swift mirrors the web op protocol; key in Keychain 'ai_key', model in
+  UserDefaults 'ai_model'. Dictation.swift = SFSpeechRecognizer streaming; final
+  transcript auto-runs the command. Privacy keys injected via INFOPLIST_KEY_* in
+  project.pbxproj. Web command bar also gets dictation free via the iPad
+  keyboard's mic key. Stage 3 = wall board.
 - SEAN'S TODO: console.anthropic.com -> account + API key, buy ~$5 credits,
   SET A MONTHLY SPEND LIMIT, then paste key via the bolt button.
 
