@@ -83,6 +83,18 @@ big-touchscreen "talk and modify drawings together" setup.
    if the name appears literally in it — construct patterns from variables, or
    kill in a separate command.
 
+## Images (web v2.10 / ios v0.5.0)
+
+- Element type "image": {x,y,w,h,src,alpha?}. Binary lives OUTSIDE board.json as
+  repo file images/<id>.jpg (immutable; downscaled <=1600px, JPEG, <=~900KB to
+  stay under the contents-API 1MB base64 ceiling). Clients cache by src;
+  placeholder while loading. Orphaned image files are never deleted (harmless).
+- Resize: corner handle on rect/ellipse/diamond/image in select mode; images
+  are aspect-locked. Finger now defaults to PAN on both clients (touch only —
+  mouse always uses the active tool; that bug bit once).
+- AI may move/resize images via update but never creates them or touches src.
+- ⚠ Element.src is another field-stripping hazard: native < v0.5.0 scrubs it.
+
 ## AI command bar (Stage 1, web v2.9)
 
 - Bolt button in toolbar -> bottom command bar. Typed command + full board JSON ->
