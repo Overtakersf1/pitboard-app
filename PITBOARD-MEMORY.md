@@ -149,7 +149,9 @@ GM-confidential separation, wall board).
   flowchart (cleaned by Claude), various test shapes.
 - **pitboard SKILL installed on Sean's account** (source versioned at skill/ in
   pitboard-app): any session can read/render/edit/create boards. Bundled
-  scripts: render_board.js (Playwright harness), board_utils.py (rev-bump-safe
+  scripts: render_board.py (PIL fallback — renders ANYWHERE, no browser; use
+  first in local VMs), render_board.js (Playwright, full fidelity, needs
+  /opt/pw-browsers/chromium), board_utils.py (rev-bump-safe
   load/save, inventory, beacon detection). Token is EMBEDDED in Sean's
   account-installed skill copy (so every session has it with zero setup);
   fallbacks: pitboard-token.txt in the iCloud folder, then ask Sean. The
