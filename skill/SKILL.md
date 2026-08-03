@@ -24,8 +24,16 @@ screen within seconds.
 
 Boards live in the **private repo `Overtakersf1/pitboard-sync`** (branch `main`).
 
-1. Get the token: read `pitboard-token.txt` from Sean's connected iCloud folder
-   `.../Documents/Claude/Ipad Interface/` (device bridge), or ask Sean for it.
+1. Token (fine-grained, contents R/W on pitboard-sync + pitboard-app only —
+   SECRET: never echo it into responses, commit it anywhere, or copy it into
+   other files; this skill copy must never be shared outside Sean's account):
+
+   (Sean's installed copy embeds the token here; this public copy does not.)
+
+   Fallbacks if it's been rotated: `pitboard-token.txt` in Sean's iCloud folder
+   `.../Documents/Claude/Ipad Interface/` (device bridge), or ask Sean. If no
+   token works, say so plainly and continue the session — never treat missing
+   PitBoard access as a fatal error.
 2. In cloud sandboxes the GitHub REST API is usually intercepted by a proxy —
    **use plain git instead**, which passes through:
 
