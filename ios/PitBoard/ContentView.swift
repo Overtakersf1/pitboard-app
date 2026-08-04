@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var aiStatus = ""
     @State private var aiBusy = false
     @StateObject private var dictation = Dictation()
+    @StateObject private var voice = VoiceEngine()
     @State private var photoItem: PhotosPickerItem?
 
     private let palette = ["ink", "#4da3ff", "#ffb454", "#ff6b6b", "#51d88a", "#b78cff"]
@@ -128,6 +129,11 @@ struct ContentView: View {
             } label: {
                 Image(systemName: "bolt.fill")
             }.buttonStyle(ToolStyle(active: showCmdBar, tint: .yellow))
+            Button {
+                if voice.configured { voice.toggle() } else { showSettings = true }
+            } label: {
+                Image(systemName: voiceIcon)
+            }.buttonStyle(ToolStyle(active: voice.state == .connected, tint: voiceTint))
             Button { showBoards = true } label: {
                 Image(systemName: "square.grid.2x2")
             }.buttonStyle(ToolStyle(active: false))
@@ -152,7 +158,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("PITBOARD").font(.system(size: 12, weight: .bold)).kerning(1.2)
                     .foregroundColor(.white)
-                Text("v0.5.0 · \(engine.boardTitle)").font(.system(size: 8))
+                Text("v0.6.0 · \(engine.boardTitle)").font(.system(size: 8))
                     .foregroundColor(Color(red: 1.0, green: 0.71, blue: 0.33))
             }
         }
@@ -260,6 +266,23 @@ struct ContentView: View {
         }
     }
 
+    private var voiceIcon: String {
+        switch voice.state {
+        case .connected: return voice.botSpeaking ? "waveform" : "waveform.circle.fill"
+        case .connecting: return "waveform.circle"
+        case .error: return "waveform.slash"
+        case .off: return "waveform.circle"
+        }
+    }
+    private var voiceTint: Color {
+        switch voice.state {
+        case .connected: return .green
+        case .connecting: return .orange
+        case .error: return .red
+        case .off: return .white
+        }
+    }
+
     private var statusDot: some View {
         Circle().fill(dotColor).frame(width: 12, height: 12)
             .shadow(color: dotColor.opacity(0.8), radius: 4)
@@ -343,6 +366,7 @@ struct SettingsSheet: View {
     @State private var tokenInput = ""
     @State private var aiKeyInput = ""
     @State private var aiModelInput = UserDefaults.standard.string(forKey: "ai_model") ?? ""
+    @State private var voiceURLInput = UserDefaults.standard.string(forKey: "voice_url") ?? ""
 
     var body: some View {
         NavigationStack {
@@ -382,6 +406,20 @@ struct SettingsSheet: View {
                         dismiss()
                     }
                     .disabled(aiKeyInput.isEmpty && (KeychainStore.load(key: "ai_key")?.isEmpty ?? true))
+                }
+                Section("Voice (waveform button)") {
+                    TextField("https://your-mac.tailXXXX.ts.net", text: $voiceURLInput)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                    Button("Save voice server") {
+                        UserDefaults.standard.set(
+                            voiceURLInput.trimmingCharacters(in: .whitespacesAndNewlines),
+                            forKey: "voice_url")
+                        dismiss()
+                    }
+                    Text("The Tailscale Serve URL of your PitBoard Voice server (stage2_bot.py on the MacBook). Must be https.")
+                        .font(.footnote).foregroundColor(.secondary)
                 }
                 if !engine.lastError.isEmpty {
                     Section("Last error") { Text(engine.lastError).font(.footnote) }

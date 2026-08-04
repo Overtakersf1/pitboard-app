@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		337046763022AD7700A81539 /* PipecatClientIOS in Frameworks */ = {isa = PBXBuildFile; productRef = 337046753022AD7700A81539 /* PipecatClientIOS */; };
+		337046793022AD8600A81539 /* PipecatClientIOSSmallWebrtc in Frameworks */ = {isa = PBXBuildFile; productRef = 337046783022AD8600A81539 /* PipecatClientIOSSmallWebrtc */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		33A0E2B8301EDD9B00BA626A /* PitBoard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PitBoard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +28,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				337046763022AD7700A81539 /* PipecatClientIOS in Frameworks */,
+				337046793022AD8600A81539 /* PipecatClientIOSSmallWebrtc in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +72,8 @@
 			);
 			name = PitBoard;
 			packageProductDependencies = (
+				337046753022AD7700A81539 /* PipecatClientIOS */,
+				337046783022AD8600A81539 /* PipecatClientIOSSmallWebrtc */,
 			);
 			productName = PitBoard;
 			productReference = 33A0E2B8301EDD9B00BA626A /* PitBoard.app */;
@@ -95,6 +104,10 @@
 			);
 			mainGroup = 33A0E2AF301EDD9B00BA626A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				337046743022AD7700A81539 /* XCRemoteSwiftPackageReference "pipecat-client-ios" */,
+				337046773022AD8600A81539 /* XCRemoteSwiftPackageReference "pipecat-client-ios-small-webrtc" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 33A0E2B9301EDD9B00BA626A /* Products */;
 			projectDirPath = "";
@@ -258,9 +271,9 @@
 				DEVELOPMENT_TEAM = LFF6A64297;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PitBoard uses the microphone for voice commands to the board.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "PitBoard converts your speech into board edits.";
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -295,9 +308,9 @@
 				DEVELOPMENT_TEAM = LFF6A64297;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PitBoard uses the microphone for voice commands to the board.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "PitBoard converts your speech into board edits.";
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -342,6 +355,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		337046743022AD7700A81539 /* XCRemoteSwiftPackageReference "pipecat-client-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pipecat-ai/pipecat-client-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.0;
+			};
+		};
+		337046773022AD8600A81539 /* XCRemoteSwiftPackageReference "pipecat-client-ios-small-webrtc" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pipecat-ai/pipecat-client-ios-small-webrtc";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		337046753022AD7700A81539 /* PipecatClientIOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 337046743022AD7700A81539 /* XCRemoteSwiftPackageReference "pipecat-client-ios" */;
+			productName = PipecatClientIOS;
+		};
+		337046783022AD8600A81539 /* PipecatClientIOSSmallWebrtc */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 337046773022AD8600A81539 /* XCRemoteSwiftPackageReference "pipecat-client-ios-small-webrtc" */;
+			productName = PipecatClientIOSSmallWebrtc;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 33A0E2B0301EDD9B00BA626A /* Project object */;
 }
