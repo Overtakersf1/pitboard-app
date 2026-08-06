@@ -272,6 +272,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "PitBoard does not use the camera. This declaration is required by a voice framework component (WebRTC).";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PitBoard uses the microphone for voice commands to the board.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "PitBoard converts your speech into board edits.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -309,6 +310,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "PitBoard does not use the camera. This declaration is required by a voice framework component (WebRTC).";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PitBoard uses the microphone for voice commands to the board.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "PitBoard converts your speech into board edits.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
